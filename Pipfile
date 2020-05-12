@@ -4,11 +4,12 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
-gym = "*"
 
 [packages]
 numpy = "*"
 tensorflow = "*"
+gym = {extras = ["atari", "box2d"],version = "*"}
+cloudpickle = "*"
 
 [requires]
 python_version = "3.7"
