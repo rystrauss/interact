@@ -9,15 +9,15 @@ from interact.logger import Logger
 class A2CAgent(Agent):
 
     def __init__(self, *, env, load_path=None, policy=None, gamma=0.99, nsteps=5):
-        super().__init__(env=env, load_path=load_path)
         assert isinstance(policy, ActorCriticPolicy), 'policy must be an `ActorCriticPolicy` instance'
 
         self.policy = policy
         self.gamma = gamma
-
         self._runner = Runner(env, policy, nsteps, gamma)
 
-    def _train_step(self, obs, returns, dones, actions, values) -> Tuple[float, float, float]:
+        super().__init__(env=env, load_path=load_path)
+
+    def _train_step(self, obs, returns, masks, actions, values) -> Tuple[float, float, float]:
         pass
 
     def learn(self, *, total_timesteps, logger, log_interval, save_interval):

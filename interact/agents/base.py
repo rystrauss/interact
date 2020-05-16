@@ -24,7 +24,6 @@ class Agent(ABC):
 
         self._env = env
 
-        # TODO: This might need to happen after the subclass sets everything up.
         if load_path is not None:
             self.load(load_path)
 
