@@ -73,14 +73,15 @@ class SharedActorCriticPolicy(ActorCriticPolicy):
     def call(self, inputs, training=None, mask=None):
         latent = self._latent(inputs)
         pi = self._makepdf(self._policy_fn(latent))
-
-        actions = pi.sample()
-        values = self._value_fn(latent)
-        neglogpacs = -pi.log_prob(actions)
-        return actions, values, neglogpacs
+        return pi
 
     def value(self, obs):
         return self._value_fn(self._latent(obs))
 
     def step(self, obs):
-        return self.call(obs)
+        latent = self._latent(obs)
+        pi = self._makepdf(self._policy_fn(latent))
+
+        actions = pi.sample()
+        values = self._value_fn(latent)
+        return actions, values

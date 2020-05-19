@@ -11,6 +11,7 @@ tensorflow = "*"
 gym = {extras = ["atari", "box2d"],version = "*"}
 cloudpickle = "*"
 tensorflow-probability = "*"
+tqdm = "*"
 
 [requires]
 python_version = "3.7"

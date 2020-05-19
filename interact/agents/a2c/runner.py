@@ -24,12 +24,14 @@ class Runner(AbstractRunner):
 
         self.gamma = gamma
 
-    def run(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def run(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones = [], [], [], [], []
 
         for _ in range(self.nsteps):
             # Get actions and value estimates for current observations
-            actions, values, _ = self.policy.step(self.obs, self.dones)
+            actions, values = self.policy.step(self.obs)
+            actions = actions.numpy()
+            values = values.numpy()
 
             # Save data to minibatch buffers
             mb_obs.append(np.copy(self.obs))
@@ -63,11 +65,10 @@ class Runner(AbstractRunner):
         mb_actions = np.asarray(mb_actions, dtype=self.env.action_space.dtype).swapaxes(0, 1)
         mb_values = np.asarray(mb_values, dtype=np.float32).swapaxes(0, 1)
         mb_dones = np.asarray(mb_dones, dtype=np.bool).swapaxes(0, 1)
-        mb_masks = mb_dones[:, :-1]
         mb_dones = mb_dones[:, 1:]
 
         # Get value estimates for the last states
-        last_values = self.policy.value(self.obs).tolist()
+        last_values = self.policy.value(self.obs)
 
         # Calculate returns; discount and bootstrap off value function
         mb_returns = np.zeros_like(mb_rewards)
@@ -85,7 +86,5 @@ class Runner(AbstractRunner):
         mb_returns = mb_returns.reshape(-1, *mb_returns.shape[2:])
         mb_actions = mb_actions.reshape(-1, *mb_actions.shape[2:])
         mb_values = mb_values.reshape(-1, *mb_values.shape[2:])
-        mb_masks = mb_masks.reshape(-1, *mb_masks.shape[2:])
-        mb_rewards = mb_rewards.reshape(-1, *mb_rewards.shape[2:])
 
-        return mb_obs, mb_returns, mb_masks, mb_actions, mb_values, mb_rewards
+        return mb_obs, mb_returns, mb_actions, mb_values
