@@ -32,23 +32,35 @@ class Logger:
     """
 
     def __init__(self, dir):
-        self.dir = os.path.expanduser(dir)
+        self._dir = os.path.expanduser(dir)
 
-        if os.path.exists(self.dir):
+        if os.path.exists(self._dir):
             raise ValueError('Logger directory already exists.')
-        os.makedirs(self.dir, exist_ok=True)
+        os.makedirs(self._dir, exist_ok=True)
 
-        self.file = open(os.path.join(self.dir, 'log.txt'), 'w')
-        self.summary_writer = tf.summary.create_file_writer(os.path.join(self.dir, 'tb'))
+        self._file = open(os.path.join(self._dir, 'log.txt'), 'w')
+        self._summary_writer = tf.summary.create_file_writer(os.path.join(self._dir, 'tb'))
+
+    @property
+    def directory(self):
+        return self._dir
+
+    @property
+    def file(self):
+        return self._file
+
+    @property
+    def writer(self):
+        return self._summary_writer
 
     def log_scalars(self, step, **kwargs):
-        with self.summary_writer.as_default():
+        with self._summary_writer.as_default():
             for k, v in kwargs.items():
                 tf.summary.scalar(k, v, step)
 
     def log(self, message, color=None):
-        self.file.write(message)
-        self.file.write('\n')
+        self._file.write(message)
+        self._file.write('\n')
 
         if color is None:
             print(message)
@@ -65,8 +77,8 @@ class Logger:
         self.log(message, color=Colors.RED)
 
     def close(self):
-        self.file.close()
-        self.summary_writer.close()
+        self._file.close()
+        self._summary_writer.close()
 
 
 def printc(color, *args, **kwargs):

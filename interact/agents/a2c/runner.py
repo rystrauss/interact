@@ -24,8 +24,9 @@ class Runner(AbstractRunner):
 
         self.gamma = gamma
 
-    def run(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def run(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list]:
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones = [], [], [], [], []
+        ep_infos = []
 
         for _ in range(self.nsteps):
             # Get actions and value estimates for current observations
@@ -45,10 +46,15 @@ class Runner(AbstractRunner):
                 clipped_actions = np.clip(actions, self.env.action_space.low, self.env.action_space.high)
 
             # Step the environment forward using actions from the policy
-            obs, rewards, dones, _ = self.env.step(clipped_actions)
+            obs, rewards, dones, infos = self.env.step(clipped_actions)
 
             # Keep track of the number of environment steps the runner has simulated
             self._steps += self.num_env
+
+            for info in infos:
+                maybe_ep_info = info.get('episode')
+                if maybe_ep_info is not None:
+                    ep_infos.append(maybe_ep_info)
 
             # Save dones and observations for next iteration
             self.dones = dones
@@ -87,4 +93,4 @@ class Runner(AbstractRunner):
         mb_actions = mb_actions.reshape(-1, *mb_actions.shape[2:])
         mb_values = mb_values.reshape(-1, *mb_values.shape[2:])
 
-        return mb_obs, mb_returns, mb_actions, mb_values
+        return mb_obs, mb_returns, mb_actions, mb_values, ep_infos

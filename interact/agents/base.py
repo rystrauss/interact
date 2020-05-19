@@ -28,14 +28,14 @@ class Agent(ABC):
             self.load(load_path)
 
     @abstractmethod
-    def learn(self, *, total_timesteps, logger, log_interval, save_interval):
+    def learn(self, *, total_timesteps, logger, log_interval=100, save_interval=None):
         """Executes the agent's training process.
 
         Args:
             total_timesteps: The total number of timesteps in the environment that the agent will train for.
             logger: The logger to use for saving training information.
-            log_interval: The period (in timesteps) at which TensorBoard logs will be saved.
-            save_interval: The period (in timesteps) at which network weights will be saved.
+            log_interval: The period (in updates) at which TensorBoard logs will be saved.
+            save_interval: The period (in updates) at which network weights will be saved.
 
         Returns:
             None
