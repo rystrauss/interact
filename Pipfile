@@ -12,6 +12,7 @@ gym = {extras = ["atari", "box2d"],version = "*"}
 cloudpickle = "*"
 tensorflow-probability = "*"
 tqdm = "*"
+click = "*"
 
 [requires]
 python_version = "3.7"

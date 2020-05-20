@@ -9,21 +9,26 @@ from tqdm import tqdm
 from interact.agents.a2c.runner import Runner
 from interact.agents.base import Agent
 from interact.common.math_util import safe_mean
-from interact.common.policies import ActorCriticPolicy
+from interact.common.networks import build_network
+from interact.common.policies import SharedActorCriticPolicy
 from interact.logger import Logger
 
 
 class A2CAgent(Agent):
 
-    def __init__(self, *, env, policy=None, load_path=None, gamma=0.99, nsteps=5, ent_coef=0.01, vf_coef=0.25,
-                 learning_rate=0.0001):
-        assert isinstance(policy, ActorCriticPolicy), 'policy must be an `ActorCriticPolicy` instance'
+    def __init__(self, *, env, load_path=None, policy_network='mlp', value_network='shared', gamma=0.99, nsteps=5,
+                 ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, **network_kwargs):
+        if value_network == 'shared':
+            self.policy = SharedActorCriticPolicy(
+                env.action_space,
+                build_network(policy_network, env.observation_space.shape, **network_kwargs))
+        else:
+            raise NotImplementedError('only a shared value network is currently supported')
 
-        self.policy = policy
         self.gamma = gamma
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
-        self._runner = Runner(env, policy, nsteps, gamma)
+        self._runner = Runner(env, self.policy, nsteps, gamma)
         self._optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
         super().__init__(env=env, load_path=load_path)
@@ -39,7 +44,6 @@ class A2CAgent(Agent):
             policy_loss = tf.reduce_mean(advantages * neglogpacs)
             value_loss = tf.reduce_mean((returns - tf.squeeze(self.policy.value(obs))) ** 2)
             loss = policy_loss - entropy * self.ent_coef + value_loss * self.vf_coef
-
 
         grads = tape.gradient(loss, self.policy.trainable_weights)
         self._optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
@@ -71,10 +75,13 @@ class A2CAgent(Agent):
 
                 logger.log_scalars(update, **to_log)
 
-        self.save(os.path.join(logger.directory, 'weights', f'weights_{nupdates}'))
+            if (save_interval is not None and update % save_interval == 0) or update == nupdates:
+                self.save(os.path.join(logger.directory, 'weights', f'update_{update}'))
 
+    @tf.function
     def act(self, observation):
-        pass
+        pi = self.policy(observation)
+        return pi.mode()
 
     def load(self, path):
         self.policy.load_weights(path)
