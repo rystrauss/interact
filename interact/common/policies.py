@@ -75,9 +75,11 @@ class SharedActorCriticPolicy(ActorCriticPolicy):
         pi = self._makepdf(self._policy_fn(latent))
         return pi
 
+    @tf.function
     def value(self, obs):
         return self._value_fn(self._latent(obs))
 
+    @tf.function
     def step(self, obs):
         latent = self._latent(obs)
         pi = self._makepdf(self._policy_fn(latent))
