@@ -15,7 +15,7 @@ import tensorflow as tf
 
 from interact.agents.util import available_agents, get_agent
 from interact.common.parallel_env import make_parallelized_env
-from interact.logger import Logger
+from interact.logger import Logger, printc, Colors
 
 
 def extract_extra_kwargs(context_args):
@@ -76,13 +76,13 @@ def train(context, env, agent, total_timesteps, log_interval, save_interval, num
 
     extra_kwargs = extract_extra_kwargs(context.args)
 
+    log_dir = os.path.join(log_dir, datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
+    logger = Logger(log_dir)
+
     with open(os.path.join(log_dir, 'params.json'), 'w') as fp:
         json.dump(dict(env=env, agent=agent, **extra_kwargs), fp)
 
     env = make_parallelized_env(env, num_env, seed)
-
-    log_dir = os.path.join(log_dir, datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
-    logger = Logger(log_dir)
 
     agent = get_agent(agent)(env=env, load_path=load_path, **extra_kwargs)
 
@@ -123,7 +123,7 @@ def play(dir):
             if done:
                 obs = env.reset()
     except KeyboardInterrupt:
-        pass
+        printc(Colors.BLUE, 'Got KeyboardInterrupt: exiting...')
     finally:
         env.close()
 

@@ -32,12 +32,13 @@ class A2CAgent(Agent):
         nsteps: The number of steps taken in each environment per update.
         ent_coef: The coefficient of the entropy term in the loss function.
         vf_coef: The coefficiant of the value term in the loss function.
-        learning_rate: The learning rate.
+        learning_rate: The initial learning rate.
+        lr_decay: Whether or not the learning rate should be decayed over time.
         **network_kwargs: Keyword arguments to be passed to the policy/value network.
     """
 
     def __init__(self, *, env, load_path=None, policy_network='mlp', value_network='shared', gamma=0.99, nsteps=5,
-                 ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, **network_kwargs):
+                 ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, lr_decay=False, **network_kwargs):
         if value_network == 'shared':
             self.policy = SharedActorCriticPolicy(
                 env.action_space,
@@ -48,8 +49,10 @@ class A2CAgent(Agent):
         self.gamma = gamma
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
+        self.learning_rate = learning_rate
+        self.lr_decay = lr_decay
         self._runner = Runner(env, self.policy, nsteps, gamma)
-        self._optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+        self._optimizer = None
 
         super().__init__(env=env, load_path=load_path)
 
@@ -79,6 +82,10 @@ class A2CAgent(Agent):
         assert isinstance(logger, Logger), 'logger must be an instance of the `Logger` class'
 
         nupdates = total_timesteps // self._runner.batch_size
+
+        learning_rate = self.learning_rate if not self.lr_decay else tf.optimizers.schedules.PolynomialDecay(
+            self.learning_rate, nupdates, 1e-8)
+        self._optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
         ep_info_buf = deque([], maxlen=100)
 
