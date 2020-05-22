@@ -117,8 +117,9 @@ def play(dir):
 
     try:
         while True:
-            action = agent.act(np.expand_dims(obs, axis=0))
-            obs, _, done, _ = env.step(np.squeeze(action))
+            action = agent.act(np.expand_dims(obs, axis=0))[0].numpy()
+
+            obs, _, done, _ = env.step(action)
             env.render()
             if done:
                 obs = env.reset()
