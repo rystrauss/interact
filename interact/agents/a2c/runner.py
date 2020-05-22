@@ -1,20 +1,15 @@
+"""Provides a `Runner` implementation for A2C.
+
+Author: Ryan Strauss
+"""
+
 from typing import Tuple
 
 import gym
 import numpy as np
 
+from interact.common.math_util import discount_with_dones
 from interact.common.runners import AbstractRunner
-
-
-def discount_with_dones(rewards, dones, gamma):
-    discounted = []
-    ret = 0
-
-    for reward, done in zip(rewards[::-1], dones[::-1]):
-        ret = reward + gamma * ret * (1. - done)
-        discounted.append(ret)
-
-    return discounted[::-1]
 
 
 class Runner(AbstractRunner):

@@ -1,3 +1,8 @@
+"""Primary command line utility for training and playing with agents.
+
+Author: Ryan Strauss
+"""
+
 import json
 import multiprocessing
 import os
@@ -31,6 +36,7 @@ def extract_extra_kwargs(context_args):
 
 @click.group()
 def cli():
+    """This command line interface allows agents to be trained and visualized."""
     pass
 
 
@@ -56,6 +62,7 @@ def cli():
               help='Path to network weights which be loaded before training.')
 @click.pass_context
 def train(context, env, agent, total_timesteps, log_interval, save_interval, num_env, seed, log_dir, load_path):
+    """Executes the training process of an agent."""
     if num_env == -1:
         num_env = multiprocessing.cpu_count()
 
@@ -92,6 +99,7 @@ def train(context, env, agent, total_timesteps, log_interval, save_interval, num
 @click.option('--dir', type=click.Path(exists=True, file_okay=False), nargs=1,
               help='Path to directory of the agent being loaded.')
 def play(dir):
+    """Visualizes a trained agent playing in its environment."""
     with open(os.path.join(dir, 'params.json'), 'r') as fp:
         params = json.load(fp)
 

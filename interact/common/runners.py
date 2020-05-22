@@ -1,3 +1,8 @@
+"""This module provides the framework for collecting experience from parallel environments.
+
+Author: Ryan Strauss
+"""
+
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -8,6 +13,16 @@ from interact.common.policies import Policy
 
 
 class AbstractRunner(ABC):
+    """The base class from which all runners inherit.
+
+    A runner is an object which is provided with an environment and a policy and has a single `run` method which,
+    when called, returns a batch of experience collected in the environment by following the given policy.
+
+    Args:
+        env: The Gym environment from which experience will be collected.
+        policy: The policy that will be used to collect experience.
+        nsteps: The number of steps to be taken in the environment on each call to `run`.
+    """
 
     def __init__(self, env, policy, nsteps):
         assert isinstance(env, Env)
@@ -32,17 +47,18 @@ class AbstractRunner(ABC):
             A 5-tuple with the following:
                 obs: the environment observations
                 returns: the returns
-                dones: whether or not the episode is finished
                 actions: the actions
                 values: the value function output
-                neglogpacs: the negative log probabilities
+                infos: the info dicts returned by the environments
         """
         pass
 
     @property
     def steps(self):
+        """The total number of environment steps that have been executed."""
         return self._steps
 
     @property
     def batch_size(self):
+        """The size of a batch returned by `run`."""
         return self.nsteps * self.num_env

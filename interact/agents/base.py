@@ -1,4 +1,4 @@
-"""Core components of the interact package.
+"""Base components of agents.
 
 Author: Ryan Strauss
 """

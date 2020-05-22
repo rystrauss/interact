@@ -1,3 +1,8 @@
+"""Contains a subprocess-based implementation of a parallel environment.
+
+Author: Ryan Strauss
+"""
+
 import multiprocessing as mp
 from collections import OrderedDict
 
@@ -26,6 +31,8 @@ def _flatten_obs(obs, space):
 
 
 def _worker(index, remote, parent_remote, env_fn_wrapper):
+    """The program executed by each worker processes."""
+
     def step_env(env, action):
         ob, reward, done, info = env.step(action)
         if done:
@@ -36,6 +43,7 @@ def _worker(index, remote, parent_remote, env_fn_wrapper):
     env = env_fn_wrapper.fn()
 
     try:
+        printc(Colors.BLUE, f'SubprocessParallelEnv worker {index}: started')
         while True:
             cmd, data = remote.recv()
             if cmd == 'step':
@@ -61,26 +69,40 @@ def _worker(index, remote, parent_remote, env_fn_wrapper):
 
 
 class SubprocessParallelEnv(ParallelEnv):
+    """An implementation of a parallelized environment where each copy of the environment has its own subprocess.
+
+    This allows significant speedup when the environment is computationally complex.
+
+    Args:
+        env_fns: A list of functions that will create the environments (each callable returns a `gym.Env` instance
+            when called). Each function should return a copy of the same environment.
+    """
 
     def __init__(self, env_fns):
         self.waiting = False
         self.closed = False
         num_envs = len(env_fns)
 
+        # Determine the method for starting processes
         forkserver_available = 'forkserver' in mp.get_all_start_methods()
         start_method = 'forkserver' if forkserver_available else 'spawn'
 
+        # Create pipes for sending data between the processes
         ctx = mp.get_context(start_method)
         self.remotes, self.work_remotes = zip(*[ctx.Pipe(duplex=True) for _ in range(num_envs)])
 
+        # Create the processes themselves
         self.processes = []
         for i, (work_remote, remote, env_fn) in enumerate(zip(self.work_remotes, self.remotes, env_fns)):
+            # The arguments provided to each process
             args = (i, work_remote, remote, CloudpickleWrapper(env_fn))
+            # Create the process and start it
             process = ctx.Process(target=_worker, args=args, daemon=True)
             process.start()
             self.processes.append(process)
             work_remote.close()
 
+        # Determine the observation and action spaces of the environments
         self.remotes[0].send(('get_spaces', None))
         observation_space, action_space = self.remotes[0].recv()
         super().__init__(num_envs, observation_space, action_space)
