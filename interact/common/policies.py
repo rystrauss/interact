@@ -12,6 +12,8 @@ import tensorflow as tf
 from gym.spaces import Discrete
 from tensorflow_probability import distributions as tfd
 
+from interact.common.networks import build_network_fn
+
 layers = tf.keras.layers
 
 
@@ -96,14 +98,14 @@ class SharedActorCriticPolicy(ActorCriticPolicy):
 
     Args:
         action_space: The action space of this policy.
-        latent_model: The network that is shared between the policy and value function.
+        latent_model_fn: A function which returns the network that is shared between the policy and value function.
     """
 
-    def __init__(self, action_space, latent_model):
+    def __init__(self, action_space, latent_model_fn):
         super().__init__(action_space)
-        assert isinstance(latent_model, tf.keras.Model), 'latent_model must be an instance of tf.keras.Model'
 
-        self._latent = latent_model
+        self._latent = latent_model_fn()
+        assert isinstance(self._latent, tf.keras.Model), 'latent_model_fn must return an instance of tf.keras.Model'
 
         assert len(action_space.shape) <= 1, f'received action space with shape {action_space.shape}'
         num_policy_logits = action_space.n if self.is_discrete else 2 * action_space.shape[0]
@@ -145,3 +147,108 @@ class SharedActorCriticPolicy(ActorCriticPolicy):
         actions = pi.sample()
         values = self._value_fn(latent)
         return actions, values
+
+
+class DisjointActorCriticPolicy(ActorCriticPolicy):
+    """An actor-critic policy where the hidden layers of the value function and policy are distinct.
+
+    Thus, this policy requires that two networks be provided.
+
+    Args:
+        action_space: The action space of this policy.
+        policy_model_fn: A function which returns the network that is used for the policy.
+        value_model_fn: A function which returns the network that is used for the value function.
+    """
+
+    def __init__(self, action_space, policy_model_fn, value_model_fn):
+        super().__init__(action_space)
+
+        self._policy_latent = policy_model_fn()
+        assert isinstance(self._policy_latent,
+                          tf.keras.Model), 'policy_model_fn must return an instance of tf.keras.Model'
+
+        self._value_latent = value_model_fn()
+        assert isinstance(self._value_latent,
+                          tf.keras.Model), 'value_model_fn must return an instance of tf.keras.Model'
+
+        assert len(action_space.shape) <= 1, f'received action space with shape {action_space.shape}'
+        num_policy_logits = action_space.n if self.is_discrete else 2 * action_space.shape[0]
+
+        self._policy_fn = layers.Dense(num_policy_logits)
+        self._value_fn = layers.Dense(1)
+
+    def call(self, inputs, training=None, mask=None):
+        """Returns the policy's probability distribution."""
+        policy_latent = self._policy_latent(inputs)
+        pi = self._makepdf(self._policy_fn(policy_latent))
+        return pi
+
+    @tf.function
+    def value(self, obs):
+        """Computes the value estimates for given observations.
+
+        Args:
+            obs: The observations to be evaluated.
+
+        Returns:
+            The value estimates of the provided observations.
+        """
+        return self._value_fn(self._value_latent(obs))
+
+    @tf.function
+    def step(self, obs):
+        """Uses the policy to compute the requisite information for stepping in the environment.
+
+        Args:
+            obs: The environment observations to be evaluated.
+
+        Returns:
+            The tuple `(actions, values)` with the corresponding actions and value estimates for the given observations.
+        """
+        policy_latent = self._policy_latent(obs)
+        pi = self._makepdf(self._policy_fn(policy_latent))
+        actions = pi.sample()
+
+        value_latent = self._value_latent(obs)
+        values = self._value_fn(value_latent)
+
+        return actions, values
+
+
+class CopyActorCriticPolicy(DisjointActorCriticPolicy):
+    """An actor-critic policy where the hidden layers of the value function and policy are copies of the same network.
+
+    Thus, no parameters are shared between the policy and value function.
+
+    Args:
+        action_space: The action space of this policy.
+        latent_model_fn: A function which returns the network that is used for the policy and for the value function.
+    """
+
+    def __init__(self, action_space, latent_model_fn):
+        super().__init__(action_space, latent_model_fn, latent_model_fn)
+
+
+def build_actor_critic_policy(policy_network, value_network, env, **network_kwargs):
+    """Builds a policy for an actor-critic agent.
+
+    Args:
+        policy_network: The type of policy network to use.
+        value_network: The method of constructing the value network.
+        env: The environment that this policy is for.
+        **network_kwargs: Keyword arguments to be passed to the network builder.
+
+    Returns:
+        The specified actor-critic policy.
+    """
+    if value_network == 'shared':
+        return SharedActorCriticPolicy(
+            env.action_space,
+            build_network_fn(policy_network, env.observation_space.shape, **network_kwargs))
+
+    if value_network == 'copy':
+        return CopyActorCriticPolicy(
+            env.action_space,
+            build_network_fn(policy_network, env.observation_space.shape, **network_kwargs))
+
+    raise NotImplementedError('value_network must be "shared" or "copy"')

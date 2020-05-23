@@ -14,8 +14,7 @@ from tqdm import tqdm
 from interact.agents.a2c.runner import Runner
 from interact.agents.base import Agent
 from interact.common.math_util import safe_mean
-from interact.common.networks import build_network
-from interact.common.policies import SharedActorCriticPolicy
+from interact.common.policies import build_actor_critic_policy
 from interact.logger import Logger
 
 
@@ -39,13 +38,7 @@ class A2CAgent(Agent):
 
     def __init__(self, *, env, load_path=None, policy_network='mlp', value_network='shared', gamma=0.99, nsteps=5,
                  ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, lr_decay=False, **network_kwargs):
-        if value_network == 'shared':
-            self.policy = SharedActorCriticPolicy(
-                env.action_space,
-                build_network(policy_network, env.observation_space.shape, **network_kwargs))
-        else:
-            raise NotImplementedError('only a shared value network is currently supported')
-
+        self.policy = build_actor_critic_policy(policy_network, value_network, env, **network_kwargs)
         self.gamma = gamma
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef

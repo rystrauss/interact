@@ -38,7 +38,7 @@ class Logger:
             raise ValueError('Logger directory already exists.')
         os.makedirs(self._dir, exist_ok=True)
 
-        self._file = open(os.path.join(self._dir, 'log.txt'), 'w')
+        self._file = None
         self._summary_writer = tf.summary.create_file_writer(os.path.join(self._dir, 'tb'))
 
     @property
@@ -80,6 +80,9 @@ class Logger:
         Returns:
             None.
         """
+        if self._file is None:
+            self._file = open(os.path.join(self._dir, 'log.txt'), 'w')
+
         self._file.write(message)
         self._file.write('\n')
 
@@ -119,7 +122,8 @@ class Logger:
         Returns:
             None.
         """
-        self._file.close()
+        if self._file is not None:
+            self._file.close()
         self._summary_writer.close()
 
 

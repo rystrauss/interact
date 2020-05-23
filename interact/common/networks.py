@@ -7,21 +7,26 @@ from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense
 
 
-def build_network(network, input_shape, **network_kwargs):
-    """Builds a network of the specified type.
+def build_network_fn(network, input_shape, **network_kwargs):
+    """Returns a function that builds a network of the specified type.
 
     Args:
-        network: The type of network to be built. Currently, only 'mlp' is supported.
+        network: The type of network to be built.
         input_shape: The network's input shape. Should correspond to the shape of the environment's observations.
         **network_kwargs: Keyword arguments to be passed to the network building function.
 
     Returns:
-        The specified network, as a `tf.keras.Model`.
+        A function that returns the specified network, as a `tf.keras.Model`.
     """
     if network == 'mlp':
-        return build_mlp(input_shape, **network_kwargs)
+        builder_fn = build_mlp
     else:
-        raise NotImplementedError('mlp is the only supported network type')
+        raise NotImplementedError('"mlp" is the only supported network type')
+
+    def thunk():
+        return builder_fn(input_shape, **network_kwargs)
+
+    return thunk
 
 
 def build_mlp(input_shape, units=(64, 64), activation='relu'):
