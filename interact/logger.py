@@ -56,19 +56,19 @@ class Logger:
         """The writer that Tensorboard summaries are saved to."""
         return self._summary_writer
 
-    def log_scalars(self, step, **kwargs):
+    def log_scalar(self, step, name, value):
         """Logs scalar values to Tensorboard.
 
         Args:
             step: The step associated with this summary.
-            **kwargs: The key-value pairs to be written.
+            name: The name of the item being logged.
+            value: The value of the item.
 
         Returns:
             None.
         """
         with self._summary_writer.as_default():
-            for k, v in kwargs.items():
-                tf.summary.scalar(k, v, step)
+            tf.summary.scalar(name, value, step)
 
     def log(self, message, color=None):
         """Logs a string message to the console and the logger's log file.

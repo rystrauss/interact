@@ -36,7 +36,7 @@ class A2CAgent(Agent):
         **network_kwargs: Keyword arguments to be passed to the policy/value network.
     """
 
-    def __init__(self, *, env, load_path=None, policy_network='mlp', value_network='shared', gamma=0.99, nsteps=5,
+    def __init__(self, *, env, load_path=None, policy_network='mlp', value_network='copy', gamma=0.99, nsteps=5,
                  ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, lr_decay=False, **network_kwargs):
         self.policy = build_actor_critic_policy(policy_network, value_network, env, **network_kwargs)
         self.gamma = gamma
@@ -93,16 +93,16 @@ class A2CAgent(Agent):
 
             # Periodically log training info
             if update % log_interval == 0 or update == 1:
-                to_log = dict(total_timesteps=self._runner.steps,
-                              policy_entropy=entropy,
-                              policy_loss=policy_loss,
-                              value_loss=value_loss)
+                logger.log_scalar(update, 'total_timesteps', self._runner.steps)
+                logger.log_scalar(update, 'loss/policy_entropy', entropy)
+                logger.log_scalar(update, 'loss/policy_loss', policy_loss)
+                logger.log_scalar(update, 'loss/value_loss', value_loss)
 
                 if len(ep_info_buf) > 0 and len(ep_info_buf[0]) > 0:
-                    to_log['ep_reward_mean'] = safe_mean([ep_info['r'] for ep_info in ep_info_buf])
-                    to_log['ep_len_mean'] = safe_mean([ep_info['l'] for ep_info in ep_info_buf])
-
-                logger.log_scalars(update, **to_log)
+                    logger.log_scalar(update, 'episode/reward_mean',
+                                      safe_mean([ep_info['r'] for ep_info in ep_info_buf]))
+                    logger.log_scalar(update, 'episode/length_mean',
+                                      safe_mean([ep_info['l'] for ep_info in ep_info_buf]))
 
             # Periodically save model weights
             if (save_interval is not None and update % save_interval == 0) or update == nupdates:
