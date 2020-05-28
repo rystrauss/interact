@@ -88,4 +88,4 @@ class Runner(AbstractRunner):
         mb_actions = mb_actions.reshape(-1, *mb_actions.shape[2:])
         mb_values = mb_values.reshape(-1, *mb_values.shape[2:])
 
-        return mb_obs, mb_returns, mb_actions, mb_values, ep_infos
+        return mb_obs, np.squeeze(mb_returns), mb_actions, np.squeeze(mb_values), ep_infos

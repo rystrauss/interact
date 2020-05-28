@@ -3,11 +3,15 @@
 Author: Ryan Strauss
 """
 
-from interact.agents.a2c.a2c import A2CAgent
+_mapping = {}
 
-_AGENTS = {
-    'a2c': A2CAgent
-}
+
+def register(name):
+    def _thunk(cls):
+        _mapping[name] = cls
+        return cls
+
+    return _thunk
 
 
 def available_agents():
@@ -16,7 +20,7 @@ def available_agents():
     Returns:
         A list of strings indicating the agents that are available.
     """
-    return list(_AGENTS.keys())
+    return list(_mapping.keys())
 
 
 def get_agent(name):
@@ -28,7 +32,7 @@ def get_agent(name):
     Returns:
         The agent class that corresponds to the given name.
     """
-    if name not in _AGENTS:
-        raise ValueError(f'{name} is not a valid agent -- choose from {list(_AGENTS.keys())}')
+    if name not in _mapping:
+        raise ValueError(f'{name} is not a valid agent -- choose from {list(_mapping.keys())}')
 
-    return _AGENTS[name]
+    return _mapping[name]

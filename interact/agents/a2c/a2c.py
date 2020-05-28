@@ -13,11 +13,13 @@ from tqdm import tqdm
 
 from interact.agents.a2c.runner import Runner
 from interact.agents.base import Agent
+from interact.agents.util import register
 from interact.common.math_util import safe_mean
 from interact.common.policies import build_actor_critic_policy
 from interact.logger import Logger
 
 
+@register('a2c')
 class A2CAgent(Agent):
     """An agent that learns using the advantage actor-critic algorithm.
 
@@ -61,7 +63,7 @@ class A2CAgent(Agent):
             # Compute the policy for the given observations
             pi = self.policy(obs)
             # Retrieve policy entropy and the negative log probabilities of the actions
-            neglogpacs = -pi.log_prob(actions)
+            neglogpacs = -tf.reduce_sum(pi.log_prob(actions), axis=-1)
             entropy = tf.reduce_mean(pi.entropy())
             # Define the loss functions
             policy_loss = tf.reduce_mean(advantages * neglogpacs)
