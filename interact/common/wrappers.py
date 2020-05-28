@@ -4,9 +4,10 @@ Author: Ryan Strauss
 """
 
 import gym
+import numpy as np
 
 
-class Monitor(gym.Wrapper):
+class MonitorEpisodeWrapper(gym.Wrapper):
     """A wrapper that monitors episode data from an environment and makes it available in the info dict.
 
     When an episode has finished, an 'episode' entry is put into the info dict that contains the episode's length ('l')
@@ -36,3 +37,18 @@ class Monitor(gym.Wrapper):
             info['episode'] = ep_info
 
         return observation, reward, done, info
+
+
+class ClipActionsWrapper(gym.Wrapper):
+    """Clips actions to the allowed range.
+
+    This should only be used with environments that have a `Box` action space.
+    """
+
+    def step(self, action):
+        action = np.nan_to_num(action)
+        action = np.clip(action, self.action_space.low, self.action_space.high)
+        return self.env.step(action)
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)

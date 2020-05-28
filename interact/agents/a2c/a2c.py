@@ -33,17 +33,20 @@ class A2CAgent(Agent):
         vf_coef: The coefficiant of the value term in the loss function.
         learning_rate: The initial learning rate.
         lr_decay: Whether or not the learning rate should be decayed over time.
+        max_grad_norm: The maximum value for the gradient clipping.
         **network_kwargs: Keyword arguments to be passed to the policy/value network.
     """
 
     def __init__(self, *, env, load_path=None, policy_network='mlp', value_network='copy', gamma=0.99, nsteps=5,
-                 ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, lr_decay=False, **network_kwargs):
+                 ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, lr_decay=False, max_grad_norm=0.5,
+                 **network_kwargs):
         self.policy = build_actor_critic_policy(policy_network, value_network, env, **network_kwargs)
         self.gamma = gamma
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
         self.learning_rate = learning_rate
         self.lr_decay = lr_decay
+        self.max_grad_norm = max_grad_norm
         self._runner = Runner(env, self.policy, nsteps, gamma)
         self._optimizer = None
 
@@ -67,6 +70,8 @@ class A2CAgent(Agent):
 
         # Perform a gradient update to minimize the loss
         grads = tape.gradient(loss, self.policy.trainable_weights)
+        # Perform gradient clipping
+        grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
         self._optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
 
         return policy_loss, value_loss, entropy

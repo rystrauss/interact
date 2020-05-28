@@ -2,9 +2,19 @@
 
 Author: Ryan Strauss
 """
-
+import tensorflow as tf
 from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, Lambda
+
+_mapping = {}
+
+
+def register(name):
+    def _thunk(func):
+        _mapping[name] = func
+        return func
+
+    return _thunk
 
 
 def build_network_fn(network, input_shape, **network_kwargs):
@@ -18,17 +28,15 @@ def build_network_fn(network, input_shape, **network_kwargs):
     Returns:
         A function that returns the specified network, as a `tf.keras.Model`.
     """
-    if network == 'mlp':
-        builder_fn = build_mlp
-    else:
-        raise NotImplementedError('"mlp" is the only supported network type')
+    if network not in _mapping:
+        raise NotImplementedError(f'{network} is not a supported network type')
 
-    def thunk():
-        return builder_fn(input_shape, **network_kwargs)
+    builder_fn = _mapping[network]
 
-    return thunk
+    return lambda: builder_fn(input_shape, **network_kwargs)
 
 
+@register('mlp')
 def build_mlp(input_shape, units=(64, 64), activation='relu'):
     """Build a fully-connected feed-forward network, or multilayer-perceptron.
 
@@ -42,9 +50,38 @@ def build_mlp(input_shape, units=(64, 64), activation='relu'):
     """
     assert len(units) > 0, 'there must be at least one hidden layer'
 
-    layers = [Dense(units[0], activation=activation, input_shape=input_shape)]
+    layers = [Flatten(input_shape=input_shape)]
 
-    for n in units[1:]:
+    for n in units:
         layers.append(Dense(n, activation=activation))
 
     return Sequential(layers)
+
+
+@register('cnn')
+def build_nature_cnn(input_shape, scale_inputs=True):
+    """Build the convolutional neural network described in the Nature article.
+
+    Args:
+        input_shape: The network's input shape.
+        scale_inputs: If True, model inputs (which are in this case assumed to be 8-bit ints) will be scaled
+            to the range [0,1] in the first layer.
+
+    Returns:
+        The specified CNN, as a `tf.keras.Model`.
+    """
+    if scale_inputs:
+        front_layers = [
+            Lambda(lambda x: tf.cast(x, tf.float32) / 255, input_shape=input_shape),
+            Conv2D(32, 8, 4, activation='relu')
+        ]
+    else:
+        front_layers = [Conv2D(32, 8, 4, activation='relu', input_shape=input_shape)]
+
+    return Sequential([
+        *front_layers,
+        Conv2D(64, 4, 2, activation='relu'),
+        Conv2D(64, 3, 1, activation='relu'),
+        Flatten(),
+        Dense(512, activation='relu')
+    ])

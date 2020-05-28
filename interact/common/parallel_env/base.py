@@ -62,3 +62,42 @@ class ParallelEnv(Env, ABC):
     def step(self, actions):
         self.step_async(actions)
         return self.step_wait()
+
+
+class ParallelEnvWrapper(ParallelEnv):
+    """Parallel environment wrapper base class.
+
+    Args:
+        env: the parallelized environment to wrap
+        observation_space: the wrapper's observation space
+        action_space: the wrapper's action space
+    """
+
+    def __init__(self, env, observation_space=None, action_space=None):
+        super().__init__(env.num_envs, observation_space=observation_space or env.observation_space,
+                         action_space=action_space or env.action_space)
+        self._env = env
+
+    @property
+    def unwrapped(self):
+        return self._env
+
+    @abstractmethod
+    def reset(self):
+        pass
+
+    @abstractmethod
+    def step_wait(self):
+        pass
+
+    def step_async(self, actions):
+        self._env.step_async(actions)
+
+    def seed(self, seed=None):
+        return self._env.seed(seed)
+
+    def close(self):
+        return self._env.close()
+
+    def render(self, *args, **kwargs):
+        return self._env.render(*args, **kwargs)

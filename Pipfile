@@ -13,6 +13,7 @@ cloudpickle = "*"
 tensorflow-probability = "*"
 tqdm = "*"
 click = "*"
+opencv-python = "*"
 
 [requires]
 python_version = "3.7"

@@ -64,6 +64,8 @@ def _worker(index, remote, parent_remote, env_fn_wrapper):
                 raise NotImplementedError
     except KeyboardInterrupt:
         printc(Colors.YELLOW, f'SubprocessParallelEnv worker {index}: received KeyboardInterrupt')
+    except EOFError:
+        printc(Colors.YELLOW, f'SubprocessParallelEnv worker {index}: received EOFError')
     finally:
         remote.close()
 

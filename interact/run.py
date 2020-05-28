@@ -9,29 +9,11 @@ import os
 from datetime import datetime
 
 import click
-import gym
-import numpy as np
 import tensorflow as tf
 
 from interact.agents.util import available_agents, get_agent
-from interact.common.parallel_env import make_parallelized_env
 from interact.logger import Logger, printc, Colors
-
-
-def extract_extra_kwargs(context_args):
-    def pairwise(iterable):
-        iterator = iter(iterable)
-        return zip(iterator, iterator)
-
-    def parse(v):
-        assert isinstance(v, str)
-        try:
-            return eval(v)
-        except (NameError, SyntaxError):
-            return v
-
-    kwargs = {k.lstrip('--'): parse(v) for k, v in pairwise(context_args)}
-    return kwargs
+from interact.run_util import extract_extra_kwargs, make_parallelized_env
 
 
 @click.group()
@@ -60,8 +42,11 @@ def cli():
 @click.option('--log_dir', type=click.Path(), nargs=1, help='Directory where experiment data will be saved.')
 @click.option('--load_path', type=click.Path(), nargs=1,
               help='Path to network weights which be loaded before training.')
+@click.option('--normalize_obs', is_flag=True)
+@click.option('--normalize_rewards', is_flag=True)
 @click.pass_context
-def train(context, env, agent, total_timesteps, log_interval, save_interval, num_env, seed, log_dir, load_path):
+def train(context, env, agent, total_timesteps, log_interval, save_interval, num_env, seed, log_dir, load_path,
+          normalize_obs, normalize_rewards):
     """Executes the training process of an agent."""
     if num_env == -1:
         num_env = multiprocessing.cpu_count()
@@ -80,9 +65,18 @@ def train(context, env, agent, total_timesteps, log_interval, save_interval, num
     logger = Logger(log_dir)
 
     with open(os.path.join(log_dir, 'params.json'), 'w') as fp:
-        json.dump(dict(env=env, agent=agent, **extra_kwargs), fp)
+        params = dict(env=env,
+                      agent=agent,
+                      total_timesteps=total_timesteps,
+                      num_env=num_env,
+                      seed=seed,
+                      normalize_obs=normalize_obs,
+                      normalize_rewards=normalize_rewards,
+                      load_path=load_path,
+                      **extra_kwargs)
+        json.dump(params, fp)
 
-    env = make_parallelized_env(env, num_env, seed)
+    env = make_parallelized_env(env, num_env, seed, normalize_obs, normalize_rewards)
 
     agent = get_agent(agent)(env=env, load_path=load_path, **extra_kwargs)
 
@@ -95,34 +89,62 @@ def train(context, env, agent, total_timesteps, log_interval, save_interval, num
     env.close()
 
 
-@cli.command()
-@click.option('--dir', type=click.Path(exists=True, file_okay=False), nargs=1,
-              help='Path to directory of the agent being loaded.')
-def play(dir):
-    """Visualizes a trained agent playing in its environment."""
-    with open(os.path.join(dir, 'params.json'), 'r') as fp:
+def load_agent_and_env(path, monitor=False):
+    """Loads a pretrained agent and its corresponding environment.
+
+    Args:
+        path: Path to the agent's directory (which was created by the training process).
+        monitor: If True, the environment will be loaded with a video recorded attached.
+
+    Returns:
+        A 2-tuple with:
+            agent: the loaded agent
+            env: the loaded environment
+    """
+    with open(os.path.join(path, 'params.json'), 'r') as fp:
         params = json.load(fp)
 
     env = params['env']
     agent = params['agent']
+    normalize_obs = params['normalize_obs']
+    normalize_rewards = params['normalize_rewards']
     del params['env']
     del params['agent']
+    del params['total_timesteps']
+    del params['num_env']
+    del params['seed']
+    del params['normalize_obs']
+    del params['normalize_rewards']
+    del params['load_path']
 
-    load_path = tf.train.latest_checkpoint(os.path.join(dir, 'weights'))
+    load_path = tf.train.latest_checkpoint(os.path.join(path, 'weights'))
 
-    env = gym.make(env)
+    if monitor:
+        env = make_parallelized_env(env, 1, normalize_obs=normalize_obs, normalize_rewards=normalize_rewards,
+                                    video_callable=lambda x: x != 0, video_path=os.path.join(path, 'video'))
+    else:
+        env = make_parallelized_env(env, 1, normalize_obs=normalize_obs, normalize_rewards=normalize_rewards)
+
     agent = get_agent(agent)(env=env, load_path=load_path, **params)
+
+    return agent, env
+
+
+@cli.command()
+@click.option('--dir', type=click.Path(exists=True, file_okay=False), nargs=1,
+              help='Path to directory of the agent being loaded.')
+@click.option('--save', is_flag=True, help='If flag is set, episode recordings will be saved.')
+def play(dir, save):
+    """Visualizes (and optionally saves) a trained agent acting in its environment."""
+    agent, env = load_agent_and_env(dir, monitor=save)
 
     obs = env.reset()
 
     try:
         while True:
-            action = agent.act(np.expand_dims(obs, axis=0))[0].numpy()
-
+            action = agent.act(obs).numpy()
             obs, _, done, _ = env.step(action)
             env.render()
-            if done:
-                obs = env.reset()
     except KeyboardInterrupt:
         printc(Colors.BLUE, 'Got KeyboardInterrupt: exiting...')
     finally:
