@@ -60,6 +60,22 @@ class A2CAgent(Agent):
 
     @tf.function
     def _train_step(self, obs, returns, actions, values) -> Tuple[float, float, float]:
+        """Performs a policy update.
+
+        A standard actor-critic updates is used where the advantage function is used as the baseline.
+
+        Args:
+            obs: a collection of observations of environment states
+            returns: the returns received from each of the states
+            actions: the actions that were selected in each state
+            values: the values estimates of each state
+
+        Returns:
+            A 3-tuple with the following:
+                policy_loss: the loss of the policy network
+                value_loss: the loss of the value network
+                entropy: the current entropy of the policy
+        """
         # Calculate the advantages, which are used as the baseline in the actor-critic update
         advantages = returns - values
 
@@ -69,15 +85,18 @@ class A2CAgent(Agent):
             # Retrieve policy entropy and the negative log probabilities of the actions
             neglogpacs = -tf.reduce_sum(pi.log_prob(actions), axis=-1)
             entropy = tf.reduce_mean(pi.entropy())
-            # Define the loss functions
+            # Define the individual loss functions
             policy_loss = tf.reduce_mean(advantages * neglogpacs)
             value_loss = tf.reduce_mean((returns - tf.squeeze(self.policy.value(obs))) ** 2)
+            # The final loss to be minimized is a combination of the policy and value losses, in addition
+            # to an entropy bonus which can be used to encourage exploration
             loss = policy_loss - entropy * self.ent_coef + value_loss * self.vf_coef
 
         # Perform a gradient update to minimize the loss
         grads = tape.gradient(loss, self.policy.trainable_weights)
         # Perform gradient clipping
         grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
+        # Apply the gradient update
         self._optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
 
         return policy_loss, value_loss, entropy
@@ -85,16 +104,22 @@ class A2CAgent(Agent):
     def learn(self, *, total_timesteps, logger, log_interval=100, save_interval=None):
         assert isinstance(logger, Logger), 'logger must be an instance of the `Logger` class'
 
+        # Calculate the number of policy updates that we will perform
         nupdates = total_timesteps // self._runner.batch_size
 
+        # Determine whether or not the learning rate gets decayed
         learning_rate = self.learning_rate if not self.lr_decay else tf.optimizers.schedules.PolynomialDecay(
             self.learning_rate, nupdates, 1e-8)
+        # Create the optimizer for updating network parameters
         self._optimizer = tf.optimizers.RMSprop(learning_rate=learning_rate, rho=self.rho, epsilon=self.epsilon)
 
+        # Create a buffer that holds information about the 100 most recent episodes
         ep_info_buf = deque([], maxlen=100)
 
         for update in tqdm(range(1, nupdates + 1), desc='Updates', file=sys.stdout):
             # Collect experience from the environment
+            # The rollout is a tuple containing observations, returns, actions, and values
+            # This information constitutes a batch of experience that we will learn from
             *rollout, ep_infos = self._runner.run()
             # Perform a policy update based on the collected experience
             policy_loss, value_loss, entropy = self._train_step(*rollout)
