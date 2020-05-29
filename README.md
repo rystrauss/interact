@@ -5,7 +5,9 @@ Interact is a collection of reinforcement learning algorithms.
 This package is largely based on and adapted from [OpenAI Baselines](https://github.com/openai/baselines) but is
 pared down and written in TensorFlow 2. It is intended to be more intelligible while retaining a certain level of
 quality and performance. The hope is that the core pieces of the algorithms are written in such a way so that the
-algorithms are easy to parse and conducive to being better understood. 
+algorithms are easy to parse and conducive to being better understood. The aspects of this package that are most
+directly copied from Baselines are related to training infrastructure and efficiency (such as the parallelization
+of experience collection) whereas the agents themselves differ the most (and are therefore hopefully more readable).
 
 Reinforcement learning implementations, even the most popular and vetted ones, are known to be plagued by subtle bugs
 which do not necessarily make themselves evident. This is almost certainly true of this package, which was put together
