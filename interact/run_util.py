@@ -1,3 +1,8 @@
+"""Utilities for the command line interface.
+
+Author: Ryan Strauss
+"""
+
 import os
 import re
 from collections import defaultdict

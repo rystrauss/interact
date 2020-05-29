@@ -7,6 +7,7 @@ _mapping = {}
 
 
 def register(name):
+    """Decorator that registers an agent so it can be accessed through the command line interface."""
     def _thunk(cls):
         _mapping[name] = cls
         return cls

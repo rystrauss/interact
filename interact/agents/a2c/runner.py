@@ -13,6 +13,14 @@ from interact.common.runners import AbstractRunner
 
 
 class Runner(AbstractRunner):
+    """A runner that collects batches of experience for an A2C agent.
+
+    Args:
+        env: The Gym environment from which experience will be collected.
+        policy: The policy that will be used to collect experience.
+        nsteps: The number of steps to be taken in the environment on each call to `run`.
+        gamma: The discount factor.
+    """
 
     def __init__(self, env, policy, nsteps, gamma):
         super().__init__(env, policy, nsteps)

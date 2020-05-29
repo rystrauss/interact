@@ -10,6 +10,7 @@ _mapping = {}
 
 
 def register(name):
+    """Decorator that registers a network type so it can be accessed through the command line interface."""
     def _thunk(func):
         _mapping[name] = func
         return func
