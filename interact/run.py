@@ -89,12 +89,13 @@ def train(context, env, agent, total_timesteps, log_interval, save_interval, num
     env.close()
 
 
-def load_agent_and_env(path, monitor=False):
+def load_agent_and_env(path, monitor=False, update=None):
     """Loads a pretrained agent and its corresponding environment.
 
     Args:
         path: Path to the agent's directory (which was created by the training process).
         monitor: If True, the environment will be loaded with a video recorded attached.
+        update: The update number from which to load weights.
 
     Returns:
         A 2-tuple with:
@@ -117,7 +118,11 @@ def load_agent_and_env(path, monitor=False):
     del params['normalize_rewards']
     del params['load_path']
 
-    load_path = tf.train.latest_checkpoint(os.path.join(path, 'weights'))
+    if update is None:
+        load_path = tf.train.latest_checkpoint(os.path.join(path, 'weights'))
+    else:
+        load_path = os.path.join(path, 'weights', f'update_{update}')
+        assert os.path.isfile(load_path + '.index'), f'checkpoint "{load_path}" not found'
 
     if monitor:
         env = make_parallelized_env(env, 1, normalize_obs=normalize_obs, normalize_rewards=normalize_rewards,
@@ -134,9 +139,12 @@ def load_agent_and_env(path, monitor=False):
 @click.option('--dir', type=click.Path(exists=True, file_okay=False), nargs=1,
               help='Path to directory of the agent being loaded.')
 @click.option('--save', is_flag=True, help='If flag is set, episode recordings will be saved.')
-def play(dir, save):
+@click.option('--update', type=click.INT, nargs=1, help='The update number from which to load weights. '
+                                                        'Must be an update which was saved during training. '
+                                                        'By default, the most recent checkpoint will be used.')
+def play(dir, save, update):
     """Visualizes (and optionally saves) a trained agent acting in its environment."""
-    agent, env = load_agent_and_env(dir, monitor=save)
+    agent, env = load_agent_and_env(dir, monitor=save, update=update)
 
     obs = env.reset()
 
