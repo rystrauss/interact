@@ -36,7 +36,7 @@ The Interact command line interface can be accessed with:
 ```bash
 python -m interact.run
 ```
-and passing the `--help` flag with display the available commands.
+and passing the `--help` flag will display the available commands.
 
 An agent can be trained as follows:
 ```bash
