@@ -2,8 +2,10 @@
 
 Author: Ryan Strauss
 """
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Sequential
+from tensorflow.keras.initializers import Orthogonal
 from tensorflow.keras.layers import Dense, Conv2D, Flatten, Lambda
 
 _mapping = {}
@@ -11,6 +13,7 @@ _mapping = {}
 
 def register(name):
     """Decorator that registers a network type so it can be accessed through the command line interface."""
+
     def _thunk(func):
         _mapping[name] = func
         return func
@@ -54,7 +57,7 @@ def build_mlp(input_shape, units=(64, 64), activation='relu'):
     layers = [Flatten(input_shape=input_shape)]
 
     for n in units:
-        layers.append(Dense(n, activation=activation))
+        layers.append(Dense(n, activation=activation, kernel_initializer=Orthogonal(np.sqrt(2))))
 
     return Sequential(layers)
 

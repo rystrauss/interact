@@ -22,7 +22,7 @@ class Agent(ABC):
     def __init__(self, *, env, load_path=None):
         assert isinstance(env, Env), 'env must be an instance of gym.Env'
 
-        self._env = env
+        self.env = env
 
         if load_path is not None:
             self.load(load_path)

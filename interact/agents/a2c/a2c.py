@@ -16,6 +16,7 @@ from interact.agents.base import Agent
 from interact.agents.util import register
 from interact.common.math_util import safe_mean
 from interact.common.policies import build_actor_critic_policy
+from interact.common.schedules import InverseLinearTimeDecay
 from interact.logger import Logger
 
 
@@ -34,7 +35,7 @@ class A2CAgent(Agent):
         ent_coef: The coefficient of the entropy term in the loss function.
         vf_coef: The coefficiant of the value term in the loss function.
         learning_rate: The initial learning rate.
-        lr_decay: Whether or not the learning rate should be decayed over time.
+        lr_schedule: The schedule for the learning rate, either 'constant' or 'linear'.
         max_grad_norm: The maximum value for the gradient clipping.
         rho: Discounting factor used by RMSprop.
         epsilon: Constant for numerical stability used by RMSprop.
@@ -42,19 +43,21 @@ class A2CAgent(Agent):
     """
 
     def __init__(self, *, env, load_path=None, policy_network='mlp', value_network='copy', gamma=0.99, nsteps=5,
-                 ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, lr_decay=False, max_grad_norm=0.5, rho=0.99,
+                 ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, lr_schedule='constant', max_grad_norm=0.5, rho=0.99,
                  epsilon=1e-5, **network_kwargs):
+        assert lr_schedule in {'linear', 'constant'}, 'lr_schedule must be either "linear" or "constant"'
+
         self.policy = build_actor_critic_policy(policy_network, value_network, env, **network_kwargs)
         self.gamma = gamma
+        self.nsteps = nsteps
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
         self.learning_rate = learning_rate
-        self.lr_decay = lr_decay
+        self.lr_schedule = lr_schedule
         self.max_grad_norm = max_grad_norm
         self.rho = rho
         self.epsilon = epsilon
-        self._runner = Runner(env, self.policy, nsteps, gamma)
-        self._optimizer = None
+        self.optimizer = None
 
         super().__init__(env=env, load_path=load_path)
 
@@ -83,11 +86,11 @@ class A2CAgent(Agent):
             # Compute the policy for the given observations
             pi = self.policy(obs)
             # Retrieve policy entropy and the negative log probabilities of the actions
-            neglogpacs = -tf.reduce_sum(pi.log_prob(actions), axis=-1)
+            neglogpacs = tf.reduce_sum(-pi.log_prob(actions), axis=-1)
             entropy = tf.reduce_mean(pi.entropy())
             # Define the individual loss functions
             policy_loss = tf.reduce_mean(advantages * neglogpacs)
-            value_loss = tf.reduce_mean((returns - tf.squeeze(self.policy.value(obs))) ** 2)
+            value_loss = tf.reduce_mean((returns - self.policy.value(obs)) ** 2)
             # The final loss to be minimized is a combination of the policy and value losses, in addition
             # to an entropy bonus which can be used to encourage exploration
             loss = policy_loss - entropy * self.ent_coef + value_loss * self.vf_coef
@@ -97,21 +100,25 @@ class A2CAgent(Agent):
         # Perform gradient clipping
         grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
         # Apply the gradient update
-        self._optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
+        self.optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
 
         return policy_loss, value_loss, entropy
 
     def learn(self, *, total_timesteps, logger, log_interval=100, save_interval=None):
         assert isinstance(logger, Logger), 'logger must be an instance of the `Logger` class'
 
-        # Calculate the number of policy updates that we will perform
-        nupdates = total_timesteps // self._runner.batch_size
+        # Create the runner that collects experience
+        runner = Runner(self.env, self.policy, self.nsteps, self.gamma)
 
-        # Determine whether or not the learning rate gets decayed
-        learning_rate = self.learning_rate if not self.lr_decay else tf.optimizers.schedules.PolynomialDecay(
-            self.learning_rate, nupdates, 1e-8)
+        # Calculate the number of policy updates that we will perform
+        nupdates = total_timesteps // runner.batch_size
+
         # Create the optimizer for updating network parameters
-        self._optimizer = tf.optimizers.RMSprop(learning_rate=learning_rate, rho=self.rho, epsilon=self.epsilon)
+        if self.lr_schedule == 'linear':
+            learning_rate = InverseLinearTimeDecay(self.learning_rate, nupdates)
+        else:
+            learning_rate = self.learning_rate
+        self.optimizer = tf.optimizers.RMSprop(learning_rate=learning_rate, rho=self.rho, epsilon=self.epsilon)
 
         # Create a buffer that holds information about the 100 most recent episodes
         ep_info_buf = deque([], maxlen=100)
@@ -120,7 +127,7 @@ class A2CAgent(Agent):
             # Collect experience from the environment
             # The rollout is a tuple containing observations, returns, actions, and values
             # This information constitutes a batch of experience that we will learn from
-            *rollout, ep_infos = self._runner.run()
+            *rollout, ep_infos = runner.run()
             # Perform a policy update based on the collected experience
             policy_loss, value_loss, entropy = self._train_step(*rollout)
 
@@ -129,7 +136,7 @@ class A2CAgent(Agent):
 
             # Periodically log training info
             if update % log_interval == 0 or update == 1:
-                logger.log_scalar(update, 'total_timesteps', self._runner.steps)
+                logger.log_scalar(update, 'total_timesteps', runner.steps)
                 logger.log_scalar(update, 'loss/policy_entropy', entropy)
                 logger.log_scalar(update, 'loss/policy_loss', policy_loss)
                 logger.log_scalar(update, 'loss/value_loss', value_loss)
