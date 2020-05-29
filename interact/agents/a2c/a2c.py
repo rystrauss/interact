@@ -36,12 +36,14 @@ class A2CAgent(Agent):
         learning_rate: The initial learning rate.
         lr_decay: Whether or not the learning rate should be decayed over time.
         max_grad_norm: The maximum value for the gradient clipping.
+        rho: Discounting factor used by RMSprop.
+        epsilon: Constant for numerical stability used by RMSprop.
         **network_kwargs: Keyword arguments to be passed to the policy/value network.
     """
 
     def __init__(self, *, env, load_path=None, policy_network='mlp', value_network='copy', gamma=0.99, nsteps=5,
-                 ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, lr_decay=False, max_grad_norm=0.5,
-                 **network_kwargs):
+                 ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, lr_decay=False, max_grad_norm=0.5, rho=0.99,
+                 epsilon=1e-5, **network_kwargs):
         self.policy = build_actor_critic_policy(policy_network, value_network, env, **network_kwargs)
         self.gamma = gamma
         self.ent_coef = ent_coef
@@ -49,6 +51,8 @@ class A2CAgent(Agent):
         self.learning_rate = learning_rate
         self.lr_decay = lr_decay
         self.max_grad_norm = max_grad_norm
+        self.rho = rho
+        self.epsilon = epsilon
         self._runner = Runner(env, self.policy, nsteps, gamma)
         self._optimizer = None
 
@@ -85,7 +89,7 @@ class A2CAgent(Agent):
 
         learning_rate = self.learning_rate if not self.lr_decay else tf.optimizers.schedules.PolynomialDecay(
             self.learning_rate, nupdates, 1e-8)
-        self._optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+        self._optimizer = tf.optimizers.RMSprop(learning_rate=learning_rate, rho=self.rho, epsilon=self.epsilon)
 
         ep_info_buf = deque([], maxlen=100)
 
