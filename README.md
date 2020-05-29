@@ -16,7 +16,7 @@ by a singular PhD student in some free time, so all of the code should be interp
 ## Installation
 
 Interact can be installed with the steps below. Note that Interact requires Python 3, which should be preferred
-over the no longer maintained as Python 2. It is also recommended that the package be installed within a virtual
+over the no longer maintained Python 2. It is also recommended that the package be installed within a virtual
 environment.
 
 * Clone the repository.
