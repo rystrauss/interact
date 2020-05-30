@@ -63,7 +63,7 @@ class Policy(tf.keras.Model, ABC):
 
     @abstractmethod
     def step(self, obs):
-        """Returns the policy for a single step.
+        """Computes data relevant for a single step in the environment.
 
         Args:
             obs: the current observations of the environment

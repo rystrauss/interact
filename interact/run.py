@@ -49,7 +49,7 @@ def train(context, env, agent, total_timesteps, log_interval, save_interval, num
           normalize_obs, normalize_rewards):
     """Executes the training process of an agent."""
     if num_env == -1:
-        num_env = multiprocessing.cpu_count()
+        num_env = 1 if agent == 'deepq' else multiprocessing.cpu_count()
 
     if seed is None:
         seed = int.from_bytes(os.urandom(4), byteorder='big')
@@ -57,7 +57,7 @@ def train(context, env, agent, total_timesteps, log_interval, save_interval, num
     tf.random.set_seed(seed)
 
     if log_dir is None:
-        log_dir = os.path.join('logs', env)
+        log_dir = os.path.join('logs', env, agent)
 
     extra_kwargs = extract_extra_kwargs(context.args)
 
