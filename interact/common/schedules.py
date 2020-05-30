@@ -6,7 +6,7 @@ Author: Ryan Strauss
 import tensorflow as tf
 
 
-class InverseLinearTimeDecay(tf.keras.optimizers.schedules.PolynomialDecay):
+class LinearDecay(tf.keras.optimizers.schedules.PolynomialDecay):
     """A schedule that linearly decays the learning rate over the course of training.
 
     The learning rate at time `step_t` is given by:
@@ -15,7 +15,8 @@ class InverseLinearTimeDecay(tf.keras.optimizers.schedules.PolynomialDecay):
     Args:
         initial_learning_rate: The learning rate at the beginning of training.
         decay_steps: The total number of updates that will be performed.
+        end_learning_rate: The learning rate after `decay_steps` steps.
     """
 
-    def __init__(self, initial_learning_rate, decay_steps):
-        super().__init__(initial_learning_rate, decay_steps, end_learning_rate=0)
+    def __init__(self, initial_learning_rate, decay_steps, end_learning_rate=0):
+        super().__init__(initial_learning_rate, decay_steps, end_learning_rate=end_learning_rate)

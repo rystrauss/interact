@@ -16,7 +16,7 @@ from interact.agents.base import Agent
 from interact.agents.util import register
 from interact.common.math_util import safe_mean
 from interact.common.policies import build_actor_critic_policy
-from interact.common.schedules import InverseLinearTimeDecay
+from interact.common.schedules import LinearDecay
 from interact.logger import Logger
 
 
@@ -115,7 +115,7 @@ class A2CAgent(Agent):
 
         # Create the optimizer for updating network parameters
         if self.lr_schedule == 'linear':
-            learning_rate = InverseLinearTimeDecay(self.learning_rate, nupdates)
+            learning_rate = LinearDecay(self.learning_rate, nupdates)
         else:
             learning_rate = self.learning_rate
         self.optimizer = tf.optimizers.RMSprop(learning_rate=learning_rate, rho=self.rho, epsilon=self.epsilon)
