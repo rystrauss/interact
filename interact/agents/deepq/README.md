@@ -25,3 +25,9 @@ Vanilla Q-learning has been shown to overestimate Q-values due to the max operat
 suffers from substantial overestimations  in some settings. [Double DQN][3] (DDQN) is an attempt to remedy that that
 leads to better performance on several Atari games.
  
+### Prioritized Replay Experience
+
+[Prioritized Replay Experience][5] replaces the standard experience replay
+(which is sampled uniformly at random) with one that replays important
+transitions more frequently. This allows the agent to learn more
+efficiently and leads to much better performance than vanilla DQN.
