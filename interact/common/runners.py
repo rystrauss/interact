@@ -44,12 +44,7 @@ class AbstractRunner(ABC):
         """Collects experience from the environment.
 
         Returns:
-            A 5-tuple with the following:
-                obs: the environment observations
-                returns: the returns
-                actions: the actions
-                values: the value function output
-                infos: the info dicts returned by the environments
+            A tuple with the rollout data.
         """
         pass
 
