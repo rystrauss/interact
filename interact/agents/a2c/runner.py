@@ -33,7 +33,7 @@ class Runner(AbstractRunner):
 
         for _ in range(self.nsteps):
             # Get actions and value estimates for current observations
-            actions, values = self.policy.step(self.obs)
+            actions, values, _ = self.policy.step(self.obs)
             actions = actions.numpy()
             values = values.numpy()
 
@@ -77,7 +77,7 @@ class Runner(AbstractRunner):
         mb_dones = mb_dones[:, 1:]
 
         # Get value estimates for the last states
-        last_values = self.policy.value(self.obs)
+        last_values = self.policy.value(self.obs).numpy()
 
         # Calculate returns; discount and bootstrap off value function
         mb_returns = np.zeros_like(mb_rewards)

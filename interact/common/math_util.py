@@ -37,3 +37,18 @@ def discount_with_dones(rewards, dones, gamma):
         discounted.append(ret)
 
     return discounted[::-1]
+
+
+def explained_variance(y_pred, y):
+    """Computes fraction of variance that predictions explain about target.
+
+    Args:
+        y_pred: The predicted values.
+        y: THe target values.
+
+    Returns:
+        The fraction of variance that `y_pred` explain about `y`.
+    """
+    assert y.ndim == 1 and y_pred.ndim == 1
+    vary = np.var(y)
+    return np.nan if vary == 0 else 1 - np.var(y - y_pred) / vary

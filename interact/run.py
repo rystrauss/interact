@@ -31,7 +31,7 @@ def cli():
               required=True)
 @click.option('--total_timesteps', type=click.INT, nargs=1, default=100000,
               help='The total number of steps in the environment to train for.')
-@click.option('--log_interval', type=click.INT, nargs=1, default=100,
+@click.option('--log_interval', type=click.INT, nargs=1, default=10,
               help='The frequency, in terms of policy updates, that logs will be saved.')
 @click.option('--save_interval', type=click.INT, nargs=1, default=500,
               help='The frequency, in terms of policy updates, that model weights will be saved.')

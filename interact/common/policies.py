@@ -129,7 +129,7 @@ class SharedActorCriticPolicy(ActorCriticPolicy):
         Returns:
             The value estimates of the provided observations.
         """
-        return self._value_fn(self._latent(obs))
+        return tf.squeeze(self._value_fn(self._latent(obs)), axis=-1)
 
     @tf.function
     def step(self, obs):
@@ -139,14 +139,17 @@ class SharedActorCriticPolicy(ActorCriticPolicy):
             obs: The environment observations to be evaluated.
 
         Returns:
-            The tuple `(actions, values)` with the corresponding actions and value estimates for the given observations.
+            The tuple `(actions, values, neglogpacs)` with the corresponding actions, value estimates, and negative
+            action log probabilities for the given observations.
         """
         latent = self._latent(obs)
         pi = self._makepdf(self._policy_fn(latent))
 
         actions = pi.sample()
-        values = self._value_fn(latent)
-        return actions, values
+        values = tf.squeeze(self._value_fn(latent), axis=-1)
+        neglogpacs = -pi.log_prob(actions)
+
+        return actions, values, neglogpacs
 
 
 class DisjointActorCriticPolicy(ActorCriticPolicy):
@@ -193,7 +196,7 @@ class DisjointActorCriticPolicy(ActorCriticPolicy):
         Returns:
             The value estimates of the provided observations.
         """
-        return self._value_fn(self._value_latent(obs))
+        return tf.squeeze(self._value_fn(self._value_latent(obs)), axis=-1)
 
     @tf.function
     def step(self, obs):
@@ -203,16 +206,18 @@ class DisjointActorCriticPolicy(ActorCriticPolicy):
             obs: The environment observations to be evaluated.
 
         Returns:
-            The tuple `(actions, values)` with the corresponding actions and value estimates for the given observations.
+            The tuple `(actions, values, neglogpacs)` with the corresponding actions, value estimates, and negative
+            action log probabilities for the given observations.
         """
         policy_latent = self._policy_latent(obs)
         pi = self._makepdf(self._policy_fn(policy_latent))
         actions = pi.sample()
 
         value_latent = self._value_latent(obs)
-        values = self._value_fn(value_latent)
+        values = tf.squeeze(self._value_fn(value_latent), axis=-1)
+        neglogpacs = -pi.log_prob(actions)
 
-        return actions, values
+        return actions, values, neglogpacs
 
 
 class CopyActorCriticPolicy(DisjointActorCriticPolicy):
