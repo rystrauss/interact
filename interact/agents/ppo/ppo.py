@@ -37,14 +37,17 @@ class PPOAgent(Agent):
         learning_rate: The initial learning rate.
         lr_schedule: The schedule for the learning rate, either 'constant' or 'linear'.
         max_grad_norm: The maximum value for the gradient clipping.
-        rho: Discounting factor used by RMSprop.
-        epsilon: Constant for numerical stability used by RMSprop.
+        lam: Lambda value used in the GAE calculation.
+        nminibatches: Number of training minibatches per update.
+        noptepochs: Number of epochs over each batch when optimizing the loss.
+        cliprange: Clipping parameter used in the surrogate loss.
+        cliprange_schedule: The schedule for the clipping parameter, either 'constant' or 'linear'.
         **network_kwargs: Keyword arguments to be passed to the policy/value network.
     """
 
     def __init__(self, *, env, load_path=None, policy_network='mlp', value_network='copy', gamma=0.99, nsteps=2048,
                  ent_coef=0.0, vf_coef=0.5, learning_rate=3e-4, lr_schedule='constant', max_grad_norm=0.5, lam=0.95,
-                 nminibatches=4, noptepochs=4, cliprange=0.2, **network_kwargs):
+                 nminibatches=4, noptepochs=4, cliprange=0.2, cliprange_schedule='constant', **network_kwargs):
         assert lr_schedule in {'linear', 'constant'}, 'lr_schedule must be either "linear" or "constant"'
 
         self.policy = build_actor_critic_policy(policy_network, value_network, env, **network_kwargs)
@@ -59,12 +62,13 @@ class PPOAgent(Agent):
         self.nminibatches = nminibatches
         self.noptepochs = noptepochs
         self.cliprange = cliprange
+        self.cliprange_schedule = cliprange_schedule
         self.optimizer = None
 
         super().__init__(env=env, load_path=load_path)
 
     @tf.function
-    def _train_step(self, obs, returns, actions, values, neglogpacs_old):
+    def _train_step(self, obs, returns, actions, values, neglogpacs_old, cliprange):
         """Performs a policy update.
 
         A standard actor-critic updates is used where the advantage function is used as the baseline.
@@ -75,6 +79,7 @@ class PPOAgent(Agent):
             actions: the actions that were selected in each state
             values: the values estimates of each state
             neglogpacs_old: the negative log probabilities of the actions from the old policy
+            cliprange: The current value of the clipping term in the surrogate loss.
 
         Returns:
             A 4-tuple with the following:
@@ -92,16 +97,16 @@ class PPOAgent(Agent):
             # Compute the policy for the given observations
             pi = self.policy(obs)
             # Retrieve policy entropy and the negative log probabilities of the actions
-            neglogpacs = tf.reduce_sum(-pi.log_prob(actions), axis=-1)
+            neglogpacs = -pi.log_prob(actions)
             entropy = tf.reduce_mean(pi.entropy())
             # Define the policy surrogate loss
             ratio = tf.exp(neglogpacs_old - neglogpacs)
             pg_loss_unclipped = -advantages * ratio
-            pg_loss_clipped = -advantages * tf.clip_by_value(ratio, 1 - self.cliprange, 1 + self.cliprange)
+            pg_loss_clipped = -advantages * tf.clip_by_value(ratio, 1 - cliprange, 1 + cliprange)
             policy_loss = tf.reduce_mean(tf.maximum(pg_loss_unclipped, pg_loss_clipped))
             # Define the value loss
             value_preds = self.policy.value(obs)
-            value_preds_clipped = tf.clip_by_value(value_preds, -self.cliprange, self.cliprange)
+            value_preds_clipped = tf.clip_by_value(value_preds, -cliprange, cliprange)
             vf_loss_unclipped = (returns - value_preds) ** 2
             vf_loss_clipped = (returns - value_preds_clipped) ** 2
             value_loss = 0.5 * tf.reduce_mean(tf.maximum(vf_loss_clipped, vf_loss_unclipped))
@@ -109,7 +114,7 @@ class PPOAgent(Agent):
             # to an entropy bonus which can be used to encourage exploration
             loss = policy_loss - entropy * self.ent_coef + value_loss * self.vf_coef
 
-        clipfrac = tf.reduce_mean(tf.cast(tf.greater(tf.abs(ratio - 1.0), self.cliprange), tf.float32))
+        clipfrac = tf.reduce_mean(tf.cast(tf.greater(tf.abs(ratio - 1.0), cliprange), tf.float32))
 
         # Perform a gradient update to minimize the loss
         grads = tape.gradient(loss, self.policy.trainable_weights)
@@ -133,9 +138,18 @@ class PPOAgent(Agent):
         # Create the optimizer for updating network parameters
         if self.lr_schedule == 'linear':
             learning_rate = LinearDecay(self.learning_rate, nupdates)
-        else:
+        elif self.lr_schedule == 'constant':
             learning_rate = self.learning_rate
+        else:
+            raise ValueError('lr_schedule must be either "linear" or "constant"')
         self.optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+
+        if self.cliprange_schedule == 'linear':
+            cliprange = LinearDecay(self.cliprange, nupdates)
+        elif self.cliprange_schedule == 'constant':
+            cliprange = self.cliprange
+        else:
+            raise ValueError('cliprange_schedule must be either "linear" or "constant"')
 
         # Create a buffer that holds information about the 100 most recent episodes
         ep_info_buf = deque([], maxlen=100)
@@ -149,6 +163,9 @@ class PPOAgent(Agent):
             # This information constitutes a batch of experience that we will learn from
             *rollout, ep_infos = runner.run()
 
+            # Compute the current clipping amount
+            cur_cliprange = cliprange if self.cliprange_schedule == 'constant' else cliprange(update)
+
             # Perform a policy update based on the collected experience
             # The batch of experience is split into smaller minibatches, and we perform several
             # epochs over those minibatches
@@ -160,7 +177,7 @@ class PPOAgent(Agent):
                     end = start + nbatch_train
                     mb_indices = indices[start:end]
                     rollout_slices = (x[mb_indices] for x in (*rollout,))
-                    mb_losses.append(self._train_step(*rollout_slices))
+                    mb_losses.append(self._train_step(*rollout_slices, cur_cliprange))
 
             # Keep track of episode information for logging purposes
             ep_info_buf.extend(ep_infos)
