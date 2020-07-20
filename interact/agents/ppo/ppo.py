@@ -97,7 +97,7 @@ class PPOAgent(Agent):
             # Compute the policy for the given observations
             pi = self.policy(obs)
             # Retrieve policy entropy and the negative log probabilities of the actions
-            neglogpacs = -pi.log_prob(actions)
+            neglogpacs = tf.reduce_sum(tf.reshape(-pi.log_prob(actions), (len(actions), -1)), axis=-1)
             entropy = tf.reduce_mean(pi.entropy())
             # Define the policy surrogate loss
             ratio = tf.exp(neglogpacs_old - neglogpacs)

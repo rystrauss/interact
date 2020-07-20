@@ -147,7 +147,7 @@ class SharedActorCriticPolicy(ActorCriticPolicy):
 
         actions = pi.sample()
         values = tf.squeeze(self._value_fn(latent), axis=-1)
-        neglogpacs = -pi.log_prob(actions)
+        neglogpacs = tf.reduce_sum(tf.reshape(-pi.log_prob(actions), (len(actions), -1)), axis=-1)
 
         return actions, values, neglogpacs
 
@@ -215,7 +215,7 @@ class DisjointActorCriticPolicy(ActorCriticPolicy):
 
         value_latent = self._value_latent(obs)
         values = tf.squeeze(self._value_fn(value_latent), axis=-1)
-        neglogpacs = -pi.log_prob(actions)
+        neglogpacs = tf.reduce_sum(tf.reshape(-pi.log_prob(actions), (len(actions), -1)), axis=-1)
 
         return actions, values, neglogpacs
 
