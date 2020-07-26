@@ -5,23 +5,37 @@ Author: Ryan Strauss
 
 import tensorflow as tf
 
+from interact.common.layers import DuelingAggregator
 from interact.common.policies import Policy
 
 layers = tf.keras.layers
 
 
-def build_q_network(num_actions, latent_model_fn):
+def build_q_network(num_actions, latent_model_fn, dueling):
     """Builds a Q-network.
 
     Args:
         num_actions: The number of actions the network should output.
         latent_model_fn: A function that returns the model to be used for performing feature extraction.
+        dueling: A boolean indicating whether or not a dueling architecture should be used.
 
     Returns:
         A Q-network as a `tf.keras.Model``.
     """
     model = latent_model_fn()
-    q_values = layers.Dense(num_actions)(model.outputs[0])
+    net = model.outputs[0]
+
+    if dueling:
+        value_stream = layers.Dense(512, activation='relu')(net)
+        value_stream = layers.Dense(1)(value_stream)
+
+        advantage_stream = layers.Dense(512, activation='relu')(net)
+        advantage_stream = layers.Dense(num_actions)(advantage_stream)
+
+        q_values = DuelingAggregator()([value_stream, advantage_stream])
+    else:
+        q_values = layers.Dense(num_actions)(net)
+
     return tf.keras.Model(inputs=model.inputs, outputs=[q_values])
 
 
@@ -34,14 +48,15 @@ class DeepQPolicy(Policy):
     Args:
         action_space: The action space of this policy.
         latent_model_fn: A function that returns the model to be used for performing feature extraction.
+        dueling: A boolean indicating whether or not a dueling architecture should be used.
     """
 
-    def __init__(self, action_space, latent_model_fn):
+    def __init__(self, action_space, latent_model_fn, dueling):
         super().__init__(action_space)
         assert self.is_discrete, 'q-learning only works with discrete action spaces'
 
-        self.q_network = build_q_network(action_space.n, latent_model_fn)
-        self.target_network = build_q_network(action_space.n, latent_model_fn)
+        self.q_network = build_q_network(action_space.n, latent_model_fn, dueling)
+        self.target_network = build_q_network(action_space.n, latent_model_fn, dueling)
 
     def call(self, inputs, training=None, mask=None):
         return self.q_network(inputs)

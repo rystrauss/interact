@@ -63,13 +63,17 @@ def build_mlp(input_shape, units=(64, 64), activation='relu'):
 
 
 @register('cnn')
-def build_nature_cnn(input_shape, scale_inputs=True):
-    """Build the convolutional neural network described in the Nature article.
+def build_nature_cnn(input_shape, scale_inputs=True, units=(512,)):
+    """Builds a convolutional neural network.
+
+    Defaults to the network described in the DQN Nature article.
 
     Args:
         input_shape: The network's input shape.
         scale_inputs: If True, model inputs (which are in this case assumed to be 8-bit ints) will be scaled
             to the range [0,1] in the first layer.
+        units: An iterable of integers where the ith number is the number of units in the ith dense layer after
+            the convolutional layers.
 
     Returns:
         The specified CNN, as a `tf.keras.Model`.
@@ -82,10 +86,12 @@ def build_nature_cnn(input_shape, scale_inputs=True):
     else:
         front_layers = [Conv2D(32, 8, 4, activation='relu', input_shape=input_shape)]
 
+    dense_layers = [Dense(n, activation='relu') for n in units]
+
     return Sequential([
         *front_layers,
         Conv2D(64, 4, 2, activation='relu'),
         Conv2D(64, 3, 1, activation='relu'),
         Flatten(),
-        Dense(512, activation='relu')
+        *dense_layers
     ])

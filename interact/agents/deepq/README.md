@@ -3,6 +3,7 @@
 [3]: https://arxiv.org/abs/1509.06461
 [4]: https://arxiv.org/abs/1511.06581
 [5]: https://arxiv.org/abs/1511.05952
+[6]: https://arxiv.org/abs/1511.06581
 
 # Deep Q-Learning
 
@@ -24,6 +25,13 @@ modifications can be found [here][2]).
 Vanilla Q-learning has been shown to overestimate Q-values due to the max operator in the update rule, and DQN
 suffers from substantial overestimations  in some settings. [Double DQN][3] (DDQN) is an attempt to remedy that that
 leads to better performance on several Atari games.
+
+### Dueling DDQN
+
+[Dueling DDQN][6] is an extension to Double DQN that uses a new network architecture to approximate the Q-function.
+The dueling network contains two separate estimators: one for the state value function and one for the state-dependent
+action advantage function. This modification leads to significantly better performance than the original DQN
+algorithm.
  
 ### Prioritized Replay Experience
 

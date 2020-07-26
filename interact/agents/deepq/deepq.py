@@ -48,6 +48,7 @@ class DQNAgent(Agent):
             annealed to 1.0. `total_timesteps` will be used if set to None.
         prioritized_replay_epsilon: Epsilon to add to TD errors when updating priorities.
         max_grad_norm: The maximum value for the gradient clipping.
+        dueling: A boolean indicating whether or not a dueling architecture should be used.
         **network_kwargs: Keyword arguments to be passed to the networks.
     """
 
@@ -55,11 +56,12 @@ class DQNAgent(Agent):
                  target_update_freq=500, gamma=0.99, learning_rate=5e-4, initial_exploration=1., final_exploration=0.02,
                  exploration_fraction=0.1, learning_starts=1000, double=False, prioritized_replay=False,
                  prioritized_replay_alpha=0.6, prioritized_replay_beta=0.4, prioritized_replay_beta_steps=None,
-                 prioritized_replay_eps=1e-6, max_grad_norm=10.0, **network_kwargs):
+                 prioritized_replay_eps=1e-6, max_grad_norm=10.0, dueling=False, **network_kwargs):
         assert env.num_envs == 1, 'DQNAgent cannot use parallelized environments -- `num_envs` should be set to 1'
 
-        self.policy = DeepQPolicy(
-            env.action_space, build_network_fn(feature_extraction, env.observation_space.shape, **network_kwargs))
+        self.policy = DeepQPolicy(env.action_space,
+                                  build_network_fn(feature_extraction, env.observation_space.shape, **network_kwargs),
+                                  dueling)
 
         self.batch_size = batch_size
         self.buffer_size = buffer_size
