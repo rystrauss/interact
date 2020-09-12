@@ -180,6 +180,7 @@ class DisjointActorCriticPolicy(ActorCriticPolicy):
         self._policy_fn = layers.Dense(num_policy_logits)
         self._value_fn = layers.Dense(1)
 
+    @tf.function
     def call(self, inputs, training=None, mask=None):
         """Returns the policy's probability distribution."""
         policy_latent = self._policy_latent(inputs)
