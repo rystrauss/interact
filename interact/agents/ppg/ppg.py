@@ -2,6 +2,7 @@
 
 Author: Ryan Strauss
 """
+import os
 
 import numpy as np
 import tensorflow as tf
@@ -11,6 +12,7 @@ from interact.agents.base import Agent
 from interact.agents.ppg.policy import PPGPolicy
 from interact.agents.ppo.runner import Runner
 from interact.agents.util import register
+from interact.common.math_util import explained_variance, safe_mean
 from interact.common.networks import build_network_fn
 from interact.logger import Logger
 
@@ -40,9 +42,9 @@ class PPGAgent(Agent):
         **network_kwargs: Keyword arguments to be passed to the policy/value network.
     """
 
-    def __init__(self, *, env, load_path=None, network='mlp', gamma=0.99, nsteps=2048,
-                 ent_coef=0.0, vf_coef=0.5, learning_rate=3e-4, max_grad_norm=0.5, lam=0.95,
-                 nminibatches=4, noptepochs=4, cliprange=0.2, policy_iterations=32,
+    def __init__(self, *, env, load_path=None, network='mlp', gamma=0.999, nsteps=256,
+                 ent_coef=0.1, vf_coef=0.5, learning_rate=5e-4, max_grad_norm=0.5, lam=0.95,
+                 nminibatches=8, noptepochs=4, cliprange=0.2, policy_iterations=32,
                  policy_epochs=1, value_epochs=1, auxiliary_epochs=6, bc_coef=1.0, nminibatches_aux=16,
                  **network_kwargs):
         self.policy = PPGPolicy(env.action_space,
@@ -93,10 +95,7 @@ class PPGAgent(Agent):
 
         if compute_value_loss:
             value_preds = self.policy.value(obs)
-            value_preds_clipped = tf.clip_by_value(value_preds, -self.cliprange, self.cliprange)
-            vf_loss_unclipped = (returns - value_preds) ** 2
-            vf_loss_clipped = (returns - value_preds_clipped) ** 2
-            value_loss = 0.5 * tf.reduce_mean(tf.maximum(vf_loss_clipped, vf_loss_unclipped))
+            value_loss = 0.5 * tf.reduce_mean((returns - value_preds) ** 2)
 
             if not compute_policy_loss:
                 return value_loss
@@ -159,11 +158,7 @@ class PPGAgent(Agent):
             pi, aux_value_preds = self.policy.auxiliary_heads(obs)
 
             bc_loss = tf.reduce_mean(old_pi.kl_divergence(pi))
-
-            aux_value_preds_clipped = tf.clip_by_value(aux_value_preds, -self.cliprange, self.cliprange)
-            aux_vf_loss_unclipped = (returns - aux_value_preds) ** 2
-            aux_vf_loss_clipped = (returns - aux_value_preds_clipped) ** 2
-            aux_value_loss = 0.5 * tf.reduce_mean(tf.maximum(aux_vf_loss_clipped, aux_vf_loss_unclipped))
+            aux_value_loss = 0.5 * tf.reduce_mean((returns - aux_value_preds) ** 2)
 
             joint_loss = aux_value_loss + self.bc_coef * bc_loss
 
@@ -174,10 +169,7 @@ class PPGAgent(Agent):
 
         with tf.GradientTape() as tape:
             value_preds = self.policy.value(obs)
-            value_preds_clipped = tf.clip_by_value(value_preds, -self.cliprange, self.cliprange)
-            vf_loss_unclipped = (returns - value_preds) ** 2
-            vf_loss_clipped = (returns - value_preds_clipped) ** 2
-            value_loss = 0.5 * tf.reduce_mean(tf.maximum(vf_loss_clipped, vf_loss_unclipped))
+            value_loss = 0.5 * tf.reduce_mean((returns - value_preds) ** 2)
 
         grads = tape.gradient(value_loss, self.policy.value_weights)
         if self.max_grad_norm is not None:
@@ -201,9 +193,9 @@ class PPGAgent(Agent):
                 rollout_slices = (x[mb_indices] for x in (*rollout,))
                 mb_losses.append(update_fn(*rollout_slices))
 
-        return mb_losses
+        return np.mean(mb_losses, axis=0).tolist()
 
-    def _policy_phase(self, logger, runner, total_timesteps):
+    def _policy_phase(self, runner, total_timesteps, ep_info_buf):
         obs_buffer = []
         returns_buffer = []
 
@@ -212,37 +204,26 @@ class PPGAgent(Agent):
                 break
 
             *rollout, ep_infos = runner.run()
+            ep_info_buf.extend(ep_infos)
 
             if self.policy_epochs == self.value_epochs:
-                losses = self._minibatch_optimize(self._train_policy_and_value, rollout, runner.batch_size,
-                                                  self.policy_epochs,
-                                                  self.nminibatches)
+                policy_loss, entropy, value_loss = self._minibatch_optimize(self._train_policy_and_value, rollout,
+                                                                            runner.batch_size,
+                                                                            self.policy_epochs,
+                                                                            self.nminibatches)
             else:
-                policy_losses = self._minibatch_optimize(self._train_policy, rollout, runner.batch_size,
-                                                         self.policy_epochs,
-                                                         self.nminibatches)
+                policy_loss, entropy = self._minibatch_optimize(self._train_policy, rollout, runner.batch_size,
+                                                                self.policy_epochs,
+                                                                self.nminibatches)
 
-                value_losses = self._minibatch_optimize(self._train_value, rollout, runner.batch_size,
-                                                        self.value_epochs,
-                                                        self.nminibatches)
-
-                losses = list(zip(policy_losses, value_losses))
-
-            # Periodically log training info
-            # if update % log_interval == 0 or update == 1:
-            #     logger.log_scalar(runner.steps, 'loss/policy_entropy', entropy)
-            #     logger.log_scalar(runner.steps, 'loss/policy_loss', policy_loss)
-            #     logger.log_scalar(runner.steps, 'loss/value_loss', value_loss)
-            #     logger.log_scalar(runner.steps, 'vf_explained_variance', explained_variance(rollout[3], rollout[1]))
-            #     logger.log_scalar(runner.steps, 'episode/reward_mean',
-            #                       safe_mean([ep_info['r'] for ep_info in ep_info_buf]))
-            #     logger.log_scalar(runner.steps, 'episode/length_mean',
-            #                       safe_mean([ep_info['l'] for ep_info in ep_info_buf]))
+                value_loss = self._minibatch_optimize(self._train_value, rollout, runner.batch_size,
+                                                      self.value_epochs,
+                                                      self.nminibatches)
 
             obs_buffer.append(rollout[0])
             returns_buffer.append(rollout[1])
 
-        return obs_buffer, returns_buffer, losses
+        return obs_buffer, returns_buffer, policy_loss, entropy, value_loss, explained_variance(rollout[3], rollout[1])
 
     def _auxiliary_phase(self, obs_buffer, returns_buffer):
         obs_buffer = np.vstack(obs_buffer)
@@ -281,17 +262,34 @@ class PPGAgent(Agent):
 
         pbar = tqdm(total=total_timesteps, desc='Timesteps')
 
+        update = 0
+        ep_info_buf = []
+
         while True:
             if runner.steps >= total_timesteps:
                 break
 
-            obs_buffer, returns_buffer, losses = self._policy_phase(logger, runner, total_timesteps)
+            obs_buffer, returns_buffer, policy_loss, entropy, value_loss, explained_var = self._policy_phase(
+                runner, total_timesteps, ep_info_buf)
 
             self._auxiliary_phase(obs_buffer, returns_buffer)
 
+            # Periodically log training info
+            if update % log_interval == 0 or update == 1 or runner.steps >= total_timesteps:
+                logger.log_scalar(runner.steps, 'loss/policy_entropy', entropy)
+                logger.log_scalar(runner.steps, 'loss/policy_loss', policy_loss)
+                logger.log_scalar(runner.steps, 'loss/value_loss', value_loss)
+                logger.log_scalar(runner.steps, 'vf_explained_variance', explained_var)
+                logger.log_scalar(runner.steps, 'episode/reward_mean',
+                                  safe_mean([ep_info['r'] for ep_info in ep_info_buf]))
+                logger.log_scalar(runner.steps, 'episode/length_mean',
+                                  safe_mean([ep_info['l'] for ep_info in ep_info_buf]))
+
             # Periodically save model weights
-            # if (save_interval is not None and update % save_interval == 0) or update == nupdates:
-            #     self.save(os.path.join(logger.directory, 'weights', f'update_{update}'))
+            if (save_interval is not None and update % save_interval == 0) or runner.steps >= total_timesteps:
+                self.save(os.path.join(logger.directory, 'weights', f'update_{update}'))
+
+            update += 1
 
             pbar.update(runner.batch_size * self.policy_iterations)
 

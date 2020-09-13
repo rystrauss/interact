@@ -186,15 +186,16 @@ class PPOAgent(Agent):
 
             # Periodically log training info
             if update % log_interval == 0 or update == 1:
-                logger.log_scalar(update, 'total_timesteps', runner.steps)
-                logger.log_scalar(update, 'loss/policy_entropy', entropy)
-                logger.log_scalar(update, 'loss/policy_loss', policy_loss)
-                logger.log_scalar(update, 'loss/value_loss', value_loss)
-                logger.log_scalar(update, 'clipfrac', clipfrac)
-                logger.log_scalar(update, 'vf_explained_variance', explained_variance(rollout[3], rollout[1]))
-                logger.log_scalar(update, 'episode/reward_mean',
+                logger.log_scalar(runner.steps, 'update', update)
+                logger.log_scalar(runner.steps, 'total_timesteps', runner.steps)
+                logger.log_scalar(runner.steps, 'loss/policy_entropy', entropy)
+                logger.log_scalar(runner.steps, 'loss/policy_loss', policy_loss)
+                logger.log_scalar(runner.steps, 'loss/value_loss', value_loss)
+                logger.log_scalar(runner.steps, 'clipfrac', clipfrac)
+                logger.log_scalar(runner.steps, 'vf_explained_variance', explained_variance(rollout[3], rollout[1]))
+                logger.log_scalar(runner.steps, 'episode/reward_mean',
                                   safe_mean([ep_info['r'] for ep_info in ep_info_buf]))
-                logger.log_scalar(update, 'episode/length_mean',
+                logger.log_scalar(runner.steps, 'episode/length_mean',
                                   safe_mean([ep_info['l'] for ep_info in ep_info_buf]))
 
             # Periodically save model weights
