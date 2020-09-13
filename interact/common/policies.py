@@ -45,7 +45,7 @@ class Policy(tf.keras.Model, ABC):
         """A boolean indication of whether or not this policy is discrete."""
         return self._type == PolicyType.CATEGORICAL
 
-    def _makepdf(self, logits):
+    def make_pdf(self, logits):
         """Constructs a probability distribution for this policy from a set of logits.
 
         Args:
@@ -116,7 +116,7 @@ class SharedActorCriticPolicy(ActorCriticPolicy):
     def call(self, inputs, training=None, mask=None):
         """Returns the policy's probability distribution."""
         latent = self._latent(inputs)
-        pi = self._makepdf(self._policy_fn(latent))
+        pi = self.make_pdf(self._policy_fn(latent))
         return pi
 
     @tf.function
@@ -143,7 +143,7 @@ class SharedActorCriticPolicy(ActorCriticPolicy):
             action log probabilities for the given observations.
         """
         latent = self._latent(obs)
-        pi = self._makepdf(self._policy_fn(latent))
+        pi = self.make_pdf(self._policy_fn(latent))
 
         actions = pi.sample()
         values = tf.squeeze(self._value_fn(latent), axis=-1)
@@ -180,11 +180,10 @@ class DisjointActorCriticPolicy(ActorCriticPolicy):
         self._policy_fn = layers.Dense(num_policy_logits)
         self._value_fn = layers.Dense(1)
 
-    @tf.function
     def call(self, inputs, training=None, mask=None):
         """Returns the policy's probability distribution."""
         policy_latent = self._policy_latent(inputs)
-        pi = self._makepdf(self._policy_fn(policy_latent))
+        pi = self.make_pdf(self._policy_fn(policy_latent))
         return pi
 
     @tf.function
@@ -211,7 +210,7 @@ class DisjointActorCriticPolicy(ActorCriticPolicy):
             action log probabilities for the given observations.
         """
         policy_latent = self._policy_latent(obs)
-        pi = self._makepdf(self._policy_fn(policy_latent))
+        pi = self.make_pdf(self._policy_fn(policy_latent))
         actions = pi.sample()
 
         value_latent = self._value_latent(obs)

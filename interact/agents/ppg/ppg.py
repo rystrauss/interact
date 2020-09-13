@@ -3,10 +3,9 @@
 Author: Ryan Strauss
 """
 
-import os
-
 import numpy as np
 import tensorflow as tf
+from tqdm import tqdm
 
 from interact.agents.base import Agent
 from interact.agents.ppg.policy import PPGPolicy
@@ -71,9 +70,8 @@ class PPGAgent(Agent):
 
         super().__init__(env=env, load_path=load_path)
 
-    def _compute_losses(self, rollout, compute_policy_loss=True, compute_value_loss=True):
-        obs, returns, actions, values, neglogpacs_old = rollout
-
+    def _compute_losses(self, obs, returns, actions, values, neglogpacs_old, compute_policy_loss=True,
+                        compute_value_loss=True):
         advantages = returns - values
         advantages = (advantages - tf.reduce_mean(advantages)) / (tf.math.reduce_std(advantages) + 1e-8)
         advantages = tf.stop_gradient(advantages)
@@ -89,10 +87,9 @@ class PPGAgent(Agent):
             pg_loss_unclipped = -advantages * ratio
             pg_loss_clipped = -advantages * tf.clip_by_value(ratio, 1 - self.cliprange, 1 + self.cliprange)
             policy_loss = tf.reduce_mean(tf.maximum(pg_loss_unclipped, pg_loss_clipped))
-            policy_loss = policy_loss - entropy * self.ent_coef
 
             if not compute_value_loss:
-                return policy_loss
+                return policy_loss, entropy
 
         if compute_value_loss:
             value_preds = self.policy.value(obs)
@@ -104,65 +101,92 @@ class PPGAgent(Agent):
             if not compute_policy_loss:
                 return value_loss
 
-        return policy_loss, value_loss
+        return policy_loss, entropy, value_loss
 
     @tf.function
-    def _train_policy(self, rollout):
+    def _train_policy(self, obs, returns, actions, values, neglogpacs_old):
         with tf.GradientTape() as tape:
-            policy_loss = self._compute_losses(rollout, compute_value_loss=False)
+            policy_loss, entropy = self._compute_losses(obs, returns, actions, values, neglogpacs_old,
+                                                        compute_value_loss=False)
+            loss = policy_loss - entropy * self.ent_coef
 
         # Perform a gradient update to minimize the loss
-        grads = tape.gradient(policy_loss, self.policy.trainable_weights)
+        grads = tape.gradient(loss, self.policy.policy_weights)
         # Perform gradient clipping
         if self.max_grad_norm is not None:
             grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
         # Apply the gradient update
-        self.policy_optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
+        self.policy_optimizer.apply_gradients(zip(grads, self.policy.policy_weights))
 
-        return policy_loss
+        return policy_loss, entropy
 
     @tf.function
-    def _train_value(self, rollout):
+    def _train_value(self, obs, returns, actions, values, neglogpacs_old):
         with tf.GradientTape() as tape:
-            value_loss = self._compute_losses(rollout, compute_policy_loss=False)
+            value_loss = self._compute_losses(obs, returns, actions, values, neglogpacs_old, compute_policy_loss=False)
             loss = value_loss * self.vf_coef
 
         # Perform a gradient update to minimize the loss
-        grads = tape.gradient(loss, self.policy.trainable_weights)
+        grads = tape.gradient(loss, self.policy.value_weights)
         # Perform gradient clipping
         if self.max_grad_norm is not None:
             grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
         # Apply the gradient update
-        self.value_optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
+        self.value_optimizer.apply_gradients(zip(grads, self.policy.value_weights))
 
         return value_loss
 
     @tf.function
-    def _train_policy_and_value(self, rollout):
+    def _train_policy_and_value(self, obs, returns, actions, values, neglogpacs_old):
         with tf.GradientTape() as tape:
-            policy_loss, value_loss = self._compute_losses(rollout)
-            loss = policy_loss + value_loss * self.vf_coef
+            policy_loss, entropy, value_loss = self._compute_losses(obs, returns, actions, values, neglogpacs_old)
+            loss = policy_loss - entropy * self.ent_coef + value_loss * self.vf_coef
 
         # Perform a gradient update to minimize the loss
-        grads = tape.gradient(loss, self.policy.trainable_weights)
+        grads = tape.gradient(loss, self.policy.policy_and_value_weights)
         # Perform gradient clipping
         if self.max_grad_norm is not None:
             grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
         # Apply the gradient update
-        self.policy_optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
+        self.policy_optimizer.apply_gradients(zip(grads, self.policy.policy_and_value_weights))
 
-        return policy_loss, value_loss
+        return policy_loss, entropy, value_loss
 
     @tf.function
-    def _train_auxiliary(self, obs, returns, pis):
+    def _train_auxiliary(self, obs, returns, old_pi_logits):
+        old_pi = self.policy.make_pdf(old_pi_logits)
         with tf.GradientTape() as tape:
-            # TODO: Finish this -- add L^joint
+            pi, aux_value_preds = self.policy.auxiliary_heads(obs)
 
+            bc_loss = tf.reduce_mean(old_pi.kl_divergence(pi))
+
+            aux_value_preds_clipped = tf.clip_by_value(aux_value_preds, -self.cliprange, self.cliprange)
+            aux_vf_loss_unclipped = (returns - aux_value_preds) ** 2
+            aux_vf_loss_clipped = (returns - aux_value_preds_clipped) ** 2
+            aux_value_loss = 0.5 * tf.reduce_mean(tf.maximum(aux_vf_loss_clipped, aux_vf_loss_unclipped))
+
+            joint_loss = aux_value_loss + self.bc_coef * bc_loss
+
+        grads = tape.gradient(joint_loss, self.policy.auxiliary_weights)
+        if self.max_grad_norm is not None:
+            grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
+        self.aux_optimizer.apply_gradients(zip(grads, self.policy.auxiliary_weights))
+
+        with tf.GradientTape() as tape:
             value_preds = self.policy.value(obs)
             value_preds_clipped = tf.clip_by_value(value_preds, -self.cliprange, self.cliprange)
             vf_loss_unclipped = (returns - value_preds) ** 2
             vf_loss_clipped = (returns - value_preds_clipped) ** 2
             value_loss = 0.5 * tf.reduce_mean(tf.maximum(vf_loss_clipped, vf_loss_unclipped))
+
+        grads = tape.gradient(value_loss, self.policy.value_weights)
+        if self.max_grad_norm is not None:
+            grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
+
+        if self.value_optimizer is not None:
+            self.value_optimizer.apply_gradients(zip(grads, self.policy.value_weights))
+        else:
+            self.policy_optimizer.apply_gradients(zip(grads, self.policy.value_weights))
 
     def _minibatch_optimize(self, update_fn, rollout, batch_size, epochs, nminibatches):
         mb_losses = []
@@ -179,7 +203,7 @@ class PPGAgent(Agent):
 
         return mb_losses
 
-    def _policy_phase(self, runner, total_timesteps):
+    def _policy_phase(self, logger, runner, total_timesteps):
         obs_buffer = []
         returns_buffer = []
 
@@ -204,30 +228,45 @@ class PPGAgent(Agent):
 
                 losses = list(zip(policy_losses, value_losses))
 
-            # TODO: do logging here
+            # Periodically log training info
+            # if update % log_interval == 0 or update == 1:
+            #     logger.log_scalar(runner.steps, 'loss/policy_entropy', entropy)
+            #     logger.log_scalar(runner.steps, 'loss/policy_loss', policy_loss)
+            #     logger.log_scalar(runner.steps, 'loss/value_loss', value_loss)
+            #     logger.log_scalar(runner.steps, 'vf_explained_variance', explained_variance(rollout[3], rollout[1]))
+            #     logger.log_scalar(runner.steps, 'episode/reward_mean',
+            #                       safe_mean([ep_info['r'] for ep_info in ep_info_buf]))
+            #     logger.log_scalar(runner.steps, 'episode/length_mean',
+            #                       safe_mean([ep_info['l'] for ep_info in ep_info_buf]))
 
             obs_buffer.append(rollout[0])
             returns_buffer.append(rollout[1])
 
         return obs_buffer, returns_buffer, losses
 
-    def _auxiliary_phase(self, obs_buffer, returns_buffer, pi_buffer):
+    def _auxiliary_phase(self, obs_buffer, returns_buffer):
+        obs_buffer = np.vstack(obs_buffer)
+        returns_buffer = np.array(returns_buffer).flatten()
+
         batch_size = len(obs_buffer)
         indices = np.arange(batch_size)
         minibatch_size = batch_size // self.nminibatches_aux
 
-        buffer_data = obs_buffer, returns_buffer, pi_buffer
-        mb_losses = []
+        obs_mbs = []
+        returns_mbs = []
+        old_pi_logit_mbs = []
+
+        for start in range(0, batch_size, minibatch_size):
+            end = start + minibatch_size
+            mb_indices = indices[start:end]
+            obs_mb, ret_mb = (x[mb_indices] for x in (obs_buffer, returns_buffer,))
+            obs_mbs.append(obs_mb)
+            returns_mbs.append(ret_mb)
+            old_pi_logit_mbs.append(self.policy.policy_logits(obs_mb))
 
         for _ in range(self.auxiliary_epochs):
-            np.random.shuffle(indices)
-            for start in range(0, batch_size, minibatch_size):
-                end = start + minibatch_size
-                mb_indices = indices[start:end]
-                buffer_slices = (x[mb_indices] for x in (*buffer_data,))
-                mb_losses.append(self._train_auxiliary(*buffer_slices))
-
-        return mb_losses
+            for i in np.random.permutation(np.arange(self.nminibatches_aux)):
+                self._train_auxiliary(obs_mbs[i], returns_mbs[i], old_pi_logit_mbs[i])
 
     def learn(self, *, total_timesteps, logger, log_interval=100, save_interval=None):
         assert isinstance(logger, Logger), 'logger must be an instance of the `Logger` class'
@@ -240,19 +279,23 @@ class PPGAgent(Agent):
             self.value_optimizer = tf.optimizers.Adam(learning_rate=self.learning_rate)
         self.aux_optimizer = tf.optimizers.Adam(learning_rate=self.learning_rate)
 
+        pbar = tqdm(total=total_timesteps, desc='Timesteps')
+
         while True:
             if runner.steps >= total_timesteps:
                 break
 
-            obs_buffer, returns_buffer, losses = self._policy_phase(runner, total_timesteps)
+            obs_buffer, returns_buffer, losses = self._policy_phase(logger, runner, total_timesteps)
 
-            pi_buffer = [self.policy(obs) for obs in obs_buffer]
-            obs_buffer = np.vstack(obs_buffer)
-            returns_buffer = np.vstack(returns_buffer)
+            self._auxiliary_phase(obs_buffer, returns_buffer)
 
             # Periodically save model weights
-            if (save_interval is not None and update % save_interval == 0) or update == nupdates:
-                self.save(os.path.join(logger.directory, 'weights', f'update_{update}'))
+            # if (save_interval is not None and update % save_interval == 0) or update == nupdates:
+            #     self.save(os.path.join(logger.directory, 'weights', f'update_{update}'))
+
+            pbar.update(runner.batch_size * self.policy_iterations)
+
+        pbar.close()
 
     @tf.function
     def act(self, observation):
