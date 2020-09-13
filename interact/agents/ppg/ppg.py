@@ -25,20 +25,24 @@ class PPGAgent(Agent):
         env: The environment the agent is interacting with.
         load_path: A path to a checkpoint that will be loaded before training begins. If None, agent parameters
             will be initialized from scratch.
-        policy_network: The type of network to be used for the policy.
-        value_network: The method of constructing the value network, either 'shared' or 'copy'.
+        network: The type of network to be used for the policy and value functions.
         gamma: The discount factor.
         nsteps: The number of steps taken in each environment per update.
         ent_coef: The coefficient of the entropy term in the loss function.
         vf_coef: The coefficiant of the value term in the loss function.
         learning_rate: The initial learning rate.
-        lr_schedule: The schedule for the learning rate, either 'constant' or 'linear'.
         max_grad_norm: The maximum value for the gradient clipping.
         lam: Lambda value used in the GAE calculation.
         nminibatches: Number of training minibatches per update.
         noptepochs: Number of epochs over each batch when optimizing the loss.
         cliprange: Clipping parameter used in the surrogate loss.
-        cliprange_schedule: The schedule for the clipping parameter, either 'constant' or 'linear'.
+        policy_iterations: The number of policy updates performed in each policy phase.
+        policy_epochs: Controls the sample reuse for the policy function.
+        value_epochs: Controls the sample reuse for the value function.
+        auxiliary_epochs: Controls the sample reuse during the auxiliary phase, representing the number of epochs
+            performed across all data in the replay buffer.
+        bc_coef: Coefficient for the behavior cloning component of the joint loss.
+        nminibatches_aux: Number of training minibatches per auxiliary epoch.
         **network_kwargs: Keyword arguments to be passed to the policy/value network.
     """
 
@@ -74,7 +78,9 @@ class PPGAgent(Agent):
 
     def _compute_losses(self, obs, returns, actions, values, neglogpacs_old, compute_policy_loss=True,
                         compute_value_loss=True):
+        # Calculate the advantages, which are used as the baseline in the actor-critic update
         advantages = returns - values
+        # Normalize the advantages
         advantages = (advantages - tf.reduce_mean(advantages)) / (tf.math.reduce_std(advantages) + 1e-8)
         advantages = tf.stop_gradient(advantages)
 
@@ -84,7 +90,7 @@ class PPGAgent(Agent):
             # Retrieve policy entropy and the negative log probabilities of the actions
             neglogpacs = tf.reduce_sum(tf.reshape(-pi.log_prob(actions), (len(actions), -1)), axis=-1)
             entropy = tf.reduce_mean(pi.entropy())
-            # Define the policy surrogate loss
+            # Define the policy surrogate loss as per PPO
             ratio = tf.exp(neglogpacs_old - neglogpacs)
             pg_loss_unclipped = -advantages * ratio
             pg_loss_clipped = -advantages * tf.clip_by_value(ratio, 1 - self.cliprange, 1 + self.cliprange)
@@ -94,6 +100,7 @@ class PPGAgent(Agent):
                 return policy_loss, entropy
 
         if compute_value_loss:
+            # Define the MSE value loss
             value_preds = self.policy.value(obs)
             value_loss = 0.5 * tf.reduce_mean((returns - value_preds) ** 2)
 
