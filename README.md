@@ -54,3 +54,4 @@ python -m interact.run play --dir <path_to_the_agents_log_directory>
 * [A2C](interact/agents/a2c)
 * [DQN](interact/agents/deepq)
 * [PPO](interact/agents/ppo)
+* [PPG](interact/agents/ppg)
