@@ -3,6 +3,7 @@
 Author: Ryan Strauss
 """
 import os
+from collections import deque
 
 import numpy as np
 import tensorflow as tf
@@ -270,7 +271,7 @@ class PPGAgent(Agent):
         pbar = tqdm(total=total_timesteps, desc='Timesteps')
 
         update = 0
-        ep_info_buf = []
+        ep_info_buf = deque([], maxlen=100)
 
         while True:
             if runner.steps >= total_timesteps:
