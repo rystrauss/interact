@@ -97,10 +97,10 @@ def make_env(env_id, env_type, seed=None, rank=0, video_callable=None, video_pat
         assert video_path is not None, 'video_path must be provided whenever video_callable is provided'
         env = gym.wrappers.Monitor(env, os.path.join(video_path, f'env_{rank}'), video_callable=video_callable)
 
+    env = MonitorEpisodeWrapper(env)
+
     if env_type == 'atari':
         env = wrap_atari(env)
-
-    env = MonitorEpisodeWrapper(env)
 
     if isinstance(env.action_space, gym.spaces.Box):
         env = ClipActionsWrapper(env)
