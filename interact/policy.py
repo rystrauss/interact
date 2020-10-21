@@ -1,10 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Union
+from typing import Dict, Union, List
 
 import gym
 import numpy as np
-
-from interact.experience import Experience
 
 
 class Policy(ABC):
@@ -26,10 +24,10 @@ class Policy(ABC):
              states: Union[np.ndarray, None] = None) -> Dict[str, Union[float, np.ndarray]]:
         data = self._step(obs, states)
 
-        assert Experience.ACTIONS in data, f'Dictionary returned by `_step` must contain the key "{Experience.ACTIONS}"'
+        assert 'actions' in data, f'Dictionary returned by `_step` must contain the key "actions"'
         if states is not None:
-            assert Experience.STATES in data, 'If states are provided, dictionary returned by ' \
-                                              f'`_step` must contain the key "{Experience.STATES}"'
+            assert 'states' in data, 'If states are provided, dictionary returned by ' \
+                                     f'`_step` must contain the key "states"'
 
         return data
 
@@ -38,5 +36,19 @@ class Policy(ABC):
         pass
 
     @abstractmethod
+    def set_weights(self, weights):
+        pass
+
+
+class RandomPolicy(Policy):
+
+    def _step(self,
+              obs: np.ndarray,
+              states: Union[np.ndarray, None] = None) -> Dict[str, Union[float, np.ndarray, List]]:
+        return {'actions': [self.action_space.sample() for _ in range(len(obs))]}
+
+    def get_weights(self):
+        pass
+
     def set_weights(self, weights):
         pass
