@@ -1,11 +1,13 @@
+import itertools
+
 import gym
 import numpy as np
 import ray
 from gym.spaces import Box
 from gym.vector import SyncVectorEnv
 
+from interact.experience.processing import compute_returns
 from interact.experience.sample_batch import SampleBatch
-from interact.policy import RandomPolicy
 
 
 class Worker:
@@ -20,7 +22,7 @@ class Worker:
         self.dones = [False for _ in range(self.env.num_envs)]
 
     def collect(self, num_steps=1):
-        trajectory = SampleBatch()
+        batch = SampleBatch()
         ep_infos = []
 
         for _ in range(num_steps):
@@ -29,7 +31,7 @@ class Worker:
             data[SampleBatch.OBS] = self.obs.copy()
             data[SampleBatch.DONES] = self.dones
 
-            trajectory.add(**data)
+            batch.add(**data)
 
             clipped_actions = data[SampleBatch.ACTIONS]
             if isinstance(self.env.action_space, Box):
@@ -37,16 +39,16 @@ class Worker:
 
             self.obs[:], rewards, self.dones, infos = self.env.step(clipped_actions)
 
-            trajectory.add(rewards=rewards)
+            batch.add(rewards=rewards)
 
             for info in infos:
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
                     ep_infos.append(maybe_ep_info)
 
-        trajectory.finish()
+        batch.finish()
 
-        return trajectory, ep_infos
+        return batch, ep_infos
 
 
 @ray.remote
@@ -67,7 +69,9 @@ class Runner:
             return self._workers[0].collect(num_steps)
 
         batches, ep_infos = zip(*ray.get([w.collect.remote(num_steps) for w in self._workers]))
-        return SampleBatch.stack(batches)
+        ep_infos = list(itertools.chain.from_iterable(ep_infos))
+
+        return SampleBatch.stack(batches), ep_infos
 
 
 if __name__ == '__main__':
@@ -84,7 +88,7 @@ if __name__ == '__main__':
 
     runner = Runner(make_env, policy, num_envs_per_worker=2, num_workers=3)
 
-    batch = runner.run(32)
+    batch = runner.run(32).apply(compute_returns())
 
     for key in batch.keys():
         print(key, batch[key].shape)

@@ -9,13 +9,19 @@ class SampleBatch:
     INFOS = 'infos'
 
     ACTION_LOGP = 'action_logp'
+    VALUE_PREDS = 'value_preds'
 
-    def __init__(self, *args, **kwargs):
+    RETURNS = 'returns'
+
+    def __init__(self, *args, finished=False, **kwargs):
         self._data = dict(*args, **kwargs)
-        self._finished = False
+        self._finished = finished
 
     def __getitem__(self, item):
         return self._data[item]
+
+    def __setitem__(self, key, value):
+        self._data[key] = value
 
     @property
     def is_finished(self):
@@ -30,6 +36,10 @@ class SampleBatch:
                 self._data[key] = []
 
             self._data[key].append(value)
+
+    def apply(self, transformation):
+        transformation(self)
+        return self
 
     def keys(self):
         return self._data.keys()
@@ -52,6 +62,5 @@ class SampleBatch:
         for key in batches[0].keys():
             stacked_data[key] = np.concatenate([t[key] for t in batches], axis=0)
 
-        stacked_batch = SampleBatch(stacked_data)
-        stacked_batch._finished = True
+        stacked_batch = SampleBatch(stacked_data, finished=True)
         return stacked_batch

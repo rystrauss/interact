@@ -3,13 +3,15 @@ from typing import Dict, Union, List
 
 import gym
 import numpy as np
+import tensorflow as tf
+
+from interact.experience.sample_batch import SampleBatch
 
 
-class Policy(ABC):
+class Policy(ABC, tf.keras.layers.Layer):
 
-    def __init__(self,
-                 observation_space: gym.Space,
-                 action_space: gym.Space):
+    def __init__(self, observation_space: gym.Space, action_space: gym.Space):
+        super().__init__()
         self.observation_space = observation_space
         self.action_space = action_space
 
@@ -31,24 +33,13 @@ class Policy(ABC):
 
         return data
 
-    @abstractmethod
-    def get_weights(self):
-        pass
-
-    @abstractmethod
-    def set_weights(self, weights):
-        pass
-
 
 class RandomPolicy(Policy):
 
     def _step(self,
               obs: np.ndarray,
               states: Union[np.ndarray, None] = None) -> Dict[str, Union[float, np.ndarray, List]]:
-        return {'actions': [self.action_space.sample() for _ in range(len(obs))]}
-
-    def get_weights(self):
-        pass
-
-    def set_weights(self, weights):
-        pass
+        return {
+            SampleBatch.ACTIONS: np.array([self.action_space.sample() for _ in range(len(obs))]),
+            SampleBatch.VALUE_PREDS: np.random.random(len(obs))
+        }
