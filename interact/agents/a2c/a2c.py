@@ -1,5 +1,6 @@
 from typing import Dict, Callable, Tuple, List
 
+import gin
 import gym
 import tensorflow as tf
 
@@ -12,6 +13,7 @@ from interact.networks import build_network_fn
 from interact.policies.actor_critic import ActorCriticPolicy
 
 
+@gin.configurable(name_or_fn='a2c', blacklist=['env_fn'])
 @register('a2c')
 class A2CAgent(Agent):
 
@@ -35,8 +37,11 @@ class A2CAgent(Agent):
 
         network_fn = build_network_fn(policy_network, env.observation_space.shape)
 
-        self.policy = ActorCriticPolicy(env.observation_space, env.action_space, network_fn, value_network)
-        self.runner = Runner(env_fn, self.policy, num_envs_per_worker=num_envs_per_worker, num_workers=num_workers)
+        def policy_fn():
+            return ActorCriticPolicy(env.observation_space, env.action_space, network_fn, value_network)
+
+        self.policy = policy_fn()
+        self.runner = Runner(env_fn, policy_fn, num_envs_per_worker=num_envs_per_worker, num_workers=num_workers)
 
         self.num_envs_per_worker = num_envs_per_worker
         self.num_workers = num_workers
@@ -84,6 +89,8 @@ class A2CAgent(Agent):
         }
 
     def train(self) -> Tuple[Dict[str, float], List[Dict]]:
+        self.runner.update_policies(self.policy.get_weights())
+
         batch, ep_infos = self.runner.run(self.nsteps)
 
         _, last_values = self.policy(batch[SampleBatch.LAST_OBS])

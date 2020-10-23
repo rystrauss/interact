@@ -53,7 +53,7 @@ class Logger:
 
         return self._summary_writer
 
-    def log_scalars(self, step, **kwargs):
+    def log_scalars(self, step, prefix=None, **kwargs):
         """Logs scalar values to Tensorboard.
 
         Args:
@@ -65,6 +65,8 @@ class Logger:
         """
         with self.writer.as_default():
             for key, value in kwargs.items():
+                if prefix is not None:
+                    key = os.path.join(prefix, key)
                 tf.summary.scalar(key, value, step)
 
     def close(self):

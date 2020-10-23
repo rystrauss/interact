@@ -11,11 +11,11 @@ from interact.experience.sample_batch import SampleBatch
 
 class Worker:
 
-    def __init__(self, env_fn, policy, num_envs=1):
+    def __init__(self, env_fn, policy_fn, num_envs=1):
         self.env = SyncVectorEnv([env_fn] * num_envs)
         self.env.seed(int.from_bytes(os.urandom(4), byteorder='big'))
 
-        self.policy = policy
+        self.policy = policy_fn()
 
         self.obs = np.zeros(self.env.observation_space.shape,
                             dtype=self.env.observation_space.dtype)
@@ -53,6 +53,9 @@ class Worker:
 
         return batch, ep_infos
 
+    def update_policy(self, weights):
+        self.policy.set_weights(weights)
+
 
 @ray.remote
 class RemoteWorker(Worker):
@@ -61,11 +64,11 @@ class RemoteWorker(Worker):
 
 class Runner:
 
-    def __init__(self, env_fn, policy, num_envs_per_worker=1, num_workers=1):
+    def __init__(self, env_fn, policy_fn, num_envs_per_worker=1, num_workers=1):
         if num_workers == 1:
-            self._workers = [Worker(env_fn, policy, num_envs_per_worker)]
+            self._workers = [Worker(env_fn, policy_fn, num_envs_per_worker)]
         else:
-            self._workers = [RemoteWorker.remote(env_fn, policy, num_envs_per_worker) for _ in range(num_workers)]
+            self._workers = [RemoteWorker.remote(env_fn, policy_fn, num_envs_per_worker) for _ in range(num_workers)]
 
     def run(self, num_steps=1):
         if len(self._workers) == 1:
@@ -75,3 +78,9 @@ class Runner:
         ep_infos = list(itertools.chain.from_iterable(ep_infos))
 
         return SampleBatch.stack(batches), ep_infos
+
+    def update_policies(self, weights):
+        if len(self._workers) == 1:
+            self._workers[0].update_policy(weights)
+        else:
+            ray.get([w.update_policy.remote(weights) for w in self._workers])

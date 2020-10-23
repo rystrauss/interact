@@ -31,7 +31,7 @@ def compute_returns(gamma=0.99, last_values=None) -> Callable[[SampleBatch], Non
         returns_ = np.zeros_like(batch[SampleBatch.REWARDS])
         rewards_ = batch[SampleBatch.REWARDS]
         dones_ = batch[SampleBatch.DONES]
-        last_values_ = last_values or np.zeros_like(batch[SampleBatch.REWARDS][:, 0])
+        last_values_ = last_values if last_values is not None else np.zeros_like(batch[SampleBatch.REWARDS][:, 0])
 
         for i, (rewards, dones, value) in enumerate(zip(rewards_, dones_, last_values_)):
             rewards = rewards.tolist()
