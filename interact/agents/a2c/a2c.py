@@ -4,12 +4,15 @@ import gym
 import tensorflow as tf
 
 from interact.agents.base import Agent
+from interact.agents.utils import register
+from interact.experience.processing import compute_returns
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
 from interact.networks import build_network_fn
 from interact.policies.actor_critic import ActorCriticPolicy
 
 
+@register('a2c')
 class A2CAgent(Agent):
 
     def __init__(self,
@@ -30,7 +33,7 @@ class A2CAgent(Agent):
 
         env = self.make_env()
 
-        network_fn = build_network_fn(policy_network, env.observation_space)
+        network_fn = build_network_fn(policy_network, env.observation_space.shape)
 
         self.policy = ActorCriticPolicy(env.observation_space, env.action_space, network_fn, value_network)
         self.runner = Runner(env_fn, self.policy, num_envs_per_worker=num_envs_per_worker, num_workers=num_workers)
@@ -82,6 +85,9 @@ class A2CAgent(Agent):
 
     def train(self) -> Tuple[Dict[str, float], List[Dict]]:
         batch, ep_infos = self.runner.run(self.nsteps)
+
+        _, last_values = self.policy(batch[SampleBatch.LAST_OBS])
+        batch = batch.apply(compute_returns(self.gamma, last_values=last_values)).flatten()
 
         metrics = self._update(batch[SampleBatch.OBS],
                                batch[SampleBatch.RETURNS],

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Callable
+from typing import Dict, Callable, Tuple, List
 
 import gym
 import tensorflow as tf
@@ -14,13 +14,13 @@ class Agent(ABC, tf.Module):
     def make_env(self):
         return self._env_fn()
 
-    @abstractmethod
     @property
+    @abstractmethod
     def timesteps_per_iteration(self):
         pass
 
     @abstractmethod
-    def train(self) -> Dict[str, float]:
+    def train(self) -> Tuple[Dict[str, float], List[Dict]]:
         pass
 
     @abstractmethod

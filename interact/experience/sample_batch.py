@@ -3,9 +3,11 @@ import numpy as np
 
 class SampleBatch:
     OBS = 'obs'
+    LAST_OBS = 'last_obs'
     ACTIONS = 'actions'
     REWARDS = 'rewards'
     DONES = 'dones'
+    LAST_DONES = 'last_dones'
     INFOS = 'infos'
 
     ACTION_LOGP = 'action_logp'
@@ -38,6 +40,7 @@ class SampleBatch:
             self._data[key].append(value)
 
     def apply(self, transformation):
+        assert self._finished
         transformation(self)
         return self
 
@@ -52,6 +55,15 @@ class SampleBatch:
             self._data[key] = np.asarray(self._data[key], dtype=np.float32).swapaxes(0, 1)
 
         self._finished = True
+        return self
+
+    def flatten(self):
+        assert self._finished
+        for key in self._data.keys():
+            shape = self._data[key].shape
+            self._data[key] = self._data[key].reshape((shape[0] * shape[1], *shape[2:]))
+
+        return self
 
     @staticmethod
     def stack(batches):

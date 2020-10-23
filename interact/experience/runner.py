@@ -1,12 +1,11 @@
 import itertools
+import os
 
-import gym
 import numpy as np
 import ray
 from gym.spaces import Box
 from gym.vector import SyncVectorEnv
 
-from interact.experience.processing import compute_returns
 from interact.experience.sample_batch import SampleBatch
 
 
@@ -14,6 +13,8 @@ class Worker:
 
     def __init__(self, env_fn, policy, num_envs=1):
         self.env = SyncVectorEnv([env_fn] * num_envs)
+        self.env.seed(int.from_bytes(os.urandom(4), byteorder='big'))
+
         self.policy = policy
 
         self.obs = np.zeros(self.env.observation_space.shape,
@@ -33,7 +34,7 @@ class Worker:
 
             batch.add(**data)
 
-            clipped_actions = data[SampleBatch.ACTIONS]
+            clipped_actions = data[SampleBatch.ACTIONS].numpy()
             if isinstance(self.env.action_space, Box):
                 clipped_actions = np.clip(clipped_actions, self.env.action_space.low, self.env.action_space.high)
 
@@ -45,6 +46,8 @@ class Worker:
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
                     ep_infos.append(maybe_ep_info)
+
+        batch.add(last_obs=self.obs.copy(), last_dones=self.dones)
 
         batch.finish()
 
@@ -72,23 +75,3 @@ class Runner:
         ep_infos = list(itertools.chain.from_iterable(ep_infos))
 
         return SampleBatch.stack(batches), ep_infos
-
-
-if __name__ == '__main__':
-    ray.init()
-
-
-    def make_env():
-        return gym.make('CartPole-v1')
-
-
-    env = make_env()
-
-    policy = RandomPolicy(env.observation_space, env.action_space)
-
-    runner = Runner(make_env, policy, num_envs_per_worker=2, num_workers=3)
-
-    batch = runner.run(32).apply(compute_returns())
-
-    for key in batch.keys():
-        print(key, batch[key].shape)

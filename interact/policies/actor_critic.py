@@ -41,7 +41,7 @@ class ActorCriticPolicy(Policy):
 
         self._value_fn = layers.Dense(1)
 
-    def _make_pdf(self, latent):
+    def make_pdf(self, latent):
         if self._is_discrete:
             pi = tfd.Categorical(latent)
         else:
