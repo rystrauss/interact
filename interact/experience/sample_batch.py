@@ -3,27 +3,36 @@ import numpy as np
 
 class SampleBatch:
     OBS = 'obs'
-    LAST_OBS = 'last_obs'
+    NEXT_OBS = 'next_obs'
     ACTIONS = 'actions'
     REWARDS = 'rewards'
     DONES = 'dones'
-    LAST_DONES = 'last_dones'
+    NEXT_DONES = 'next_dones'
     INFOS = 'infos'
 
     ACTION_LOGP = 'action_logp'
     VALUE_PREDS = 'value_preds'
 
     RETURNS = 'returns'
+    ADVANTAGES = 'advantages'
 
-    def __init__(self, *args, finished=False, **kwargs):
+    EPS_ID = 'eps_id'
+
+    def __init__(self, *args, **kwargs):
+        self._finished = kwargs.pop('_finished', False)
         self._data = dict(*args, **kwargs)
-        self._finished = finished
 
     def __getitem__(self, item):
         return self._data[item]
 
     def __setitem__(self, key, value):
         self._data[key] = value
+
+    def __contains__(self, item):
+        return item in self._data
+
+    def __str__(self):
+        return str(self._data)
 
     @property
     def is_finished(self):
@@ -47,32 +56,47 @@ class SampleBatch:
     def keys(self):
         return self._data.keys()
 
-    def finish(self):
+    def items(self):
+        return self._data.items()
+
+    def extract_episodes(self):
         if self._finished:
             return
 
         for key in self._data.keys():
             self._data[key] = np.asarray(self._data[key], dtype=np.float32).swapaxes(0, 1)
 
-        self._finished = True
-        return self
+        slices = []
+        for j, row in enumerate(self._data[SampleBatch.EPS_ID]):
+            start = 0
+            end = 1
+            for i in range(len(row)):
+                if i == len(row) - 1 or row[start] != row[end]:
+                    slices.append(SampleBatch({k: v[j, start:end] for k, v in self._data.items() if
+                                               k not in {SampleBatch.NEXT_OBS, SampleBatch.NEXT_DONES}},
+                                              _finished=True))
 
-    def flatten(self):
+                    if i == len(row) - 1:
+                        slices[-1]._data[SampleBatch.NEXT_OBS] = self._data[SampleBatch.NEXT_OBS][j]
+                        slices[-1]._data[SampleBatch.NEXT_DONES] = self._data[SampleBatch.NEXT_DONES][j]
+
+                    start = end
+
+                end += 1
+
+        assert len(slices) == len(np.unique(self._data[SampleBatch.EPS_ID]))
+
+        return slices
+
+    def shuffle(self):
         assert self._finished
-        for key in self._data.keys():
-            shape = self._data[key].shape
-            self._data[key] = self._data[key].reshape((shape[0] * shape[1], *shape[2:]))
+
+        sizes = [len(v) for v in self._data.values()]
+        assert all(s == sizes[0] for s in sizes), \
+            'All values in the sample batch must have the same length in order to shuffle.'
+
+        inds = np.random.choice(sizes[0], (sizes[0],), replace=False)
+        for key, value in self._data.items():
+            self._data[key] = value[inds]
 
         return self
-
-    @staticmethod
-    def stack(batches):
-        stacked_data = {}
-
-        assert all([b.is_finished for b in batches]), 'All batches to be stacked must be finished.'
-
-        for key in batches[0].keys():
-            stacked_data[key] = np.concatenate([t[key] for t in batches], axis=0)
-
-        stacked_batch = SampleBatch(stacked_data, finished=True)
-        return stacked_batch

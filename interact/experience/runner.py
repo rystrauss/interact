@@ -7,6 +7,7 @@ from gym.spaces import Box
 from gym.vector import SyncVectorEnv
 
 from interact.experience.sample_batch import SampleBatch
+from interact.experience.postprocessing import EpisodeBatch
 
 
 class Worker:
@@ -21,6 +22,7 @@ class Worker:
                             dtype=self.env.observation_space.dtype)
         self.obs[:] = self.env.reset()
         self.dones = [False for _ in range(self.env.num_envs)]
+        self.eps_ids = list(range(self.env.num_envs))
 
     def collect(self, num_steps=1):
         batch = SampleBatch()
@@ -31,6 +33,7 @@ class Worker:
 
             data[SampleBatch.OBS] = self.obs.copy()
             data[SampleBatch.DONES] = self.dones
+            data[SampleBatch.EPS_ID] = self.eps_ids
 
             batch.add(**data)
 
@@ -40,6 +43,10 @@ class Worker:
 
             self.obs[:], rewards, self.dones, infos = self.env.step(clipped_actions)
 
+            for i, done in enumerate(self.dones):
+                if done:
+                    self.eps_ids[i] = (self.eps_ids[i] // self.env.num_envs) + i
+
             batch.add(rewards=rewards)
 
             for info in infos:
@@ -47,11 +54,12 @@ class Worker:
                 if maybe_ep_info is not None:
                     ep_infos.append(maybe_ep_info)
 
-        batch.add(last_obs=self.obs.copy(), last_dones=self.dones)
+        batch.add(**{
+            SampleBatch.NEXT_OBS: self.obs.copy(),
+            SampleBatch.NEXT_DONES: self.dones
+        })
 
-        batch.finish()
-
-        return batch, ep_infos
+        return batch.extract_episodes(), ep_infos
 
     def update_policy(self, weights):
         self.policy.set_weights(weights)
@@ -74,10 +82,11 @@ class Runner:
         if len(self._workers) == 1:
             return self._workers[0].collect(num_steps)
 
-        batches, ep_infos = zip(*ray.get([w.collect.remote(num_steps) for w in self._workers]))
+        episodes, ep_infos = zip(*ray.get([w.collect.remote(num_steps) for w in self._workers]))
         ep_infos = list(itertools.chain.from_iterable(ep_infos))
+        episodes = list(itertools.chain.from_iterable(episodes))
 
-        return SampleBatch.stack(batches), ep_infos
+        return EpisodeBatch.from_episodes(episodes), ep_infos
 
     def update_policies(self, weights):
         if len(self._workers) == 1:

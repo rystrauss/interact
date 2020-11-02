@@ -73,3 +73,7 @@ class ActorCriticPolicy(Policy):
             SampleBatch.ACTION_LOGP: action_logp,
             SampleBatch.VALUE_PREDS: value_preds
         }
+
+    @tf.function
+    def value(self, inputs, **kwargs):
+        return self(inputs, **kwargs)[1]

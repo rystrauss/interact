@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from interact.agents.base import Agent
 from interact.agents.utils import register
-from interact.experience.processing import compute_returns
+from interact.experience.postprocessing import AdvantagePostprocessor
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
 from interact.networks import build_network_fn
@@ -26,7 +26,7 @@ class A2CAgent(Agent):
                  gamma: float = 0.99,
                  nsteps: int = 5,
                  ent_coef: float = 0.01,
-                 vf_coef: float = 0.25,
+                 vf_coef: float = 0.5,
                  learning_rate: float = 0.0001,
                  max_grad_norm: float = 0.5,
                  rho: float = 0.99,
@@ -91,10 +91,10 @@ class A2CAgent(Agent):
     def train(self) -> Tuple[Dict[str, float], List[Dict]]:
         self.runner.update_policies(self.policy.get_weights())
 
-        batch, ep_infos = self.runner.run(self.nsteps)
+        episode_batch, ep_infos = self.runner.run(self.nsteps)
 
-        _, last_values = self.policy(batch[SampleBatch.LAST_OBS])
-        batch = batch.apply(compute_returns(self.gamma, last_values=last_values)).flatten()
+        episode_batch.for_each(AdvantagePostprocessor(self.policy, self.gamma, use_gae=False))
+        batch = episode_batch.to_sample_batch().shuffle()
 
         metrics = self._update(batch[SampleBatch.OBS],
                                batch[SampleBatch.RETURNS],
