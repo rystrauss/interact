@@ -26,7 +26,7 @@ class A2CAgent(Agent):
                  gamma: float = 0.99,
                  nsteps: int = 5,
                  ent_coef: float = 0.01,
-                 vf_coef: float = 0.5,
+                 vf_coef: float = 0.25,
                  learning_rate: float = 0.0001,
                  max_grad_norm: float = 0.5,
                  rho: float = 0.99,
@@ -58,10 +58,7 @@ class A2CAgent(Agent):
         return self.nsteps * self.num_envs_per_worker * self.num_workers
 
     @tf.function
-    def _update(self, obs, returns, actions, values):
-        # Calculate the advantages
-        advantages = returns - values
-
+    def _update(self, obs, actions, advantages, returns):
         with tf.GradientTape() as tape:
             # Compute the policy for the given observations
             pi, value_preds = self.policy(obs)
@@ -97,9 +94,9 @@ class A2CAgent(Agent):
         batch = episode_batch.to_sample_batch().shuffle()
 
         metrics = self._update(batch[SampleBatch.OBS],
-                               batch[SampleBatch.RETURNS],
                                batch[SampleBatch.ACTIONS],
-                               batch[SampleBatch.VALUE_PREDS])
+                               batch[SampleBatch.ADVANTAGES],
+                               batch[SampleBatch.RETURNS])
 
         return metrics, ep_infos
 

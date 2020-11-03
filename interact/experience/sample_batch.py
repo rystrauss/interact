@@ -72,9 +72,7 @@ class SampleBatch:
             end = 1
             for i in range(len(row)):
                 if i == len(row) - 1 or row[start] != row[end]:
-                    slices.append(SampleBatch({k: v[j, start:end] for k, v in self._data.items() if
-                                               k not in {SampleBatch.NEXT_OBS, SampleBatch.NEXT_DONES}},
-                                              _finished=True))
+                    slices.append(SampleBatch({k: v[j, start:end] for k, v in self._data.items()}, _finished=True))
 
                     if i == len(row) - 1:
                         slices[-1]._data[SampleBatch.NEXT_OBS] = self._data[SampleBatch.NEXT_OBS][j]

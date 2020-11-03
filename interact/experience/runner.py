@@ -6,8 +6,8 @@ import ray
 from gym.spaces import Box
 from gym.vector import SyncVectorEnv
 
-from interact.experience.sample_batch import SampleBatch
 from interact.experience.postprocessing import EpisodeBatch
+from interact.experience.sample_batch import SampleBatch
 
 
 class Worker:
@@ -47,17 +47,16 @@ class Worker:
                 if done:
                     self.eps_ids[i] = (self.eps_ids[i] // self.env.num_envs) + i
 
-            batch.add(rewards=rewards)
+            batch.add(**{
+                SampleBatch.REWARDS: rewards,
+                SampleBatch.NEXT_DONES: self.dones,
+                SampleBatch.NEXT_OBS: self.obs.copy()
+            })
 
             for info in infos:
                 maybe_ep_info = info.get('episode')
                 if maybe_ep_info is not None:
                     ep_infos.append(maybe_ep_info)
-
-        batch.add(**{
-            SampleBatch.NEXT_OBS: self.obs.copy(),
-            SampleBatch.NEXT_DONES: self.dones
-        })
 
         return batch.extract_episodes(), ep_infos
 

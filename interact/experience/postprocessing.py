@@ -54,8 +54,7 @@ def compute_advantages(rollout: SampleBatch,
 
     rollout[SampleBatch.ADVANTAGES] = rollout[SampleBatch.ADVANTAGES].astype(np.float32)
 
-    assert all(val.shape[0] == rollout_size for key, val in rollout.items() if
-               key not in {SampleBatch.NEXT_OBS, SampleBatch.NEXT_DONES}), 'Rollout stacked incorrectly!'
+    assert all(val.shape[0] == rollout_size for key, val in rollout.items()), 'Rollout stacked incorrectly!'
     return rollout
 
 
@@ -80,7 +79,7 @@ class AdvantagePostprocessor(Postprocessor):
         if episode[SampleBatch.DONES][-1]:
             last_r = 0.0
         else:
-            last_r = self.policy.value(episode[SampleBatch.NEXT_OBS]).numpy()[0]
+            last_r = self.policy.value(episode[SampleBatch.NEXT_OBS][-1:]).numpy()[0]
 
         compute_advantages(
             episode,
