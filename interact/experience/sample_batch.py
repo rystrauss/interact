@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy as np
 
 
@@ -48,20 +50,14 @@ class SampleBatch:
 
             self._data[key].append(value)
 
-    def apply(self, transformation):
-        assert self._finished
-        transformation(self)
-        return self
-
     def keys(self):
         return self._data.keys()
 
     def items(self):
         return self._data.items()
 
-    def extract_episodes(self):
-        if self._finished:
-            return
+    def extract_episodes(self) -> List["SampleBatch"]:
+        assert not self._finished, 'Cannot extract episodes from a finished sample batch.'
 
         for key in self._data.keys():
             self._data[key] = np.asarray(self._data[key], dtype=np.float32).swapaxes(0, 1)
@@ -87,7 +83,7 @@ class SampleBatch:
         return slices
 
     def shuffle(self):
-        assert self._finished
+        assert self._finished, 'Trying to shuffle an unfinished sample batch.'
 
         sizes = [len(v) for v in self._data.values()]
         assert all(s == sizes[0] for s in sizes), \

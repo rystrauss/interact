@@ -45,7 +45,7 @@ class ActorCriticPolicy(Policy):
         if self._is_discrete:
             pi = tfd.Categorical(latent)
         else:
-            pi = tfd.Normal(latent, tf.exp(self._policy_logstds))
+            pi = tfd.MultivariateNormalDiag(latent, tf.exp(self._policy_logstds))
         return pi
 
     def call(self, inputs, **kwargs):
@@ -66,7 +66,7 @@ class ActorCriticPolicy(Policy):
         pi, value_preds = self.call(obs)
 
         actions = pi.sample()
-        action_logp = tf.reduce_sum(tf.reshape(pi.log_prob(actions), (len(actions), -1)), axis=-1)
+        action_logp = pi.log_prob(actions)
 
         return {
             SampleBatch.ACTIONS: actions,

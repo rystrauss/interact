@@ -79,7 +79,8 @@ class Runner:
 
     def run(self, num_steps=1):
         if len(self._workers) == 1:
-            return self._workers[0].collect(num_steps)
+            episodes, ep_infos = self._workers[0].collect(num_steps)
+            return EpisodeBatch.from_episodes(episodes), ep_infos
 
         episodes, ep_infos = zip(*ray.get([w.collect.remote(num_steps) for w in self._workers]))
         ep_infos = list(itertools.chain.from_iterable(ep_infos))

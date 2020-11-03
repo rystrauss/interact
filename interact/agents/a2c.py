@@ -9,6 +9,7 @@ from interact.agents.utils import register
 from interact.experience.postprocessing import AdvantagePostprocessor
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
+from interact.math_utils import explained_variance
 from interact.networks import build_network_fn
 from interact.policies.actor_critic import ActorCriticPolicy
 
@@ -63,7 +64,7 @@ class A2CAgent(Agent):
             # Compute the policy for the given observations
             pi, value_preds = self.policy(obs)
             # Retrieve policy entropy and the negative log probabilities of the actions
-            neglogpacs = tf.reduce_sum(tf.reshape(-pi.log_prob(actions), (len(actions), -1)), axis=-1)
+            neglogpacs = -pi.log_prob(actions)
             entropy = tf.reduce_mean(pi.entropy())
             # Define the individual loss functions
             policy_loss = tf.reduce_mean(advantages * neglogpacs)
@@ -79,19 +80,22 @@ class A2CAgent(Agent):
         # Apply the gradient update
         self.optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
 
+        value_explained_variance = explained_variance(returns, value_preds)
+
         return {
             'policy_loss': policy_loss,
             'value_loss': value_loss,
-            'policy_entropy': entropy
+            'policy_entropy': entropy,
+            'value_explained_variance': value_explained_variance
         }
 
     def train(self) -> Tuple[Dict[str, float], List[Dict]]:
         self.runner.update_policies(self.policy.get_weights())
 
-        episode_batch, ep_infos = self.runner.run(self.nsteps)
+        episodes, ep_infos = self.runner.run(self.nsteps)
 
-        episode_batch.for_each(AdvantagePostprocessor(self.policy, self.gamma, use_gae=False))
-        batch = episode_batch.to_sample_batch().shuffle()
+        episodes.for_each(AdvantagePostprocessor(self.policy, self.gamma, use_gae=False))
+        batch = episodes.to_sample_batch().shuffle()
 
         metrics = self._update(batch[SampleBatch.OBS],
                                batch[SampleBatch.ACTIONS],

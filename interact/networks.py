@@ -2,6 +2,7 @@
 
 Author: Ryan Strauss
 """
+import gin
 import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense, Conv2D, Flatten, Lambda
@@ -38,6 +39,7 @@ def build_network_fn(network, input_shape):
     return lambda: builder_fn(input_shape)
 
 
+@gin.configurable(name_or_fn='mlp', blacklist=['input_shape'])
 @register('mlp')
 def build_mlp(input_shape, units=(64, 64), activation='relu'):
     """Build a fully-connected feed-forward network, or multilayer-perceptron.
@@ -60,6 +62,7 @@ def build_mlp(input_shape, units=(64, 64), activation='relu'):
     return Sequential(layers)
 
 
+@gin.configurable(name_or_fn='cnn', blacklist=['input_shape'])
 @register('cnn')
 def build_nature_cnn(input_shape, scale_inputs=True, units=(512,)):
     """Builds a convolutional neural network.

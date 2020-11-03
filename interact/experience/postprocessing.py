@@ -10,8 +10,8 @@ from interact.policies.actor_critic import ActorCriticPolicy
 def discount_cumsum(x: np.ndarray, gamma: float) -> float:
     """Calculates the discounted cumulative sum over a reward sequence `x`.
 
-    y[t] - discount*y[t+1] = x[t]
-    reversed(y)[t] - discount*reversed(y)[t-1] = reversed(x)[t]
+    y[t] - discount * y[t+1] = x[t]
+    reversed(y)[t] - discount * reversed(y)[t-1] = reversed(x)[t]
 
     Args:
         gamma (float): The discount factor gamma.
@@ -31,7 +31,7 @@ def compute_advantages(rollout: SampleBatch,
     rollout_size = len(rollout[SampleBatch.ACTIONS])
 
     assert SampleBatch.VALUE_PREDS in rollout or not use_critic, 'use_critic=True but values not found'
-    assert use_critic or not use_gae, 'Can\'t use gae without using a value function'
+    assert use_critic or not use_gae, 'Can\'t use GAE without using a value function'
 
     if use_gae:
         vpred_t = np.concatenate([rollout[SampleBatch.VALUE_PREDS], np.array([last_r])])
@@ -93,7 +93,7 @@ class AdvantagePostprocessor(Postprocessor):
 class EpisodeBatch:
 
     def __init__(self, **kwargs):
-        if kwargs.get('internal') != True:
+        if not kwargs.get('internal'):
             raise ValueError('This class is only meant to be directly instantiated internally.')
 
         self._episodes = kwargs.get('episodes')

@@ -58,6 +58,7 @@ def train(agent: str,
         if update % log_interval == 0:
             metric_results = {k: v.result() for k, v in metrics.items()}
             logger.log_scalars(update, prefix='agent', **metric_results)
+            # TODO: Log total timesteps
 
             for metric in metrics.values():
                 metric.reset_states()
