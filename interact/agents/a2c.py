@@ -12,6 +12,7 @@ from interact.experience.sample_batch import SampleBatch
 from interact.math_utils import explained_variance
 from interact.networks import build_network_fn
 from interact.policies.actor_critic import ActorCriticPolicy
+from interact.schedules import LinearDecay
 
 
 @gin.configurable(name_or_fn='a2c', blacklist=['env_fn'])
@@ -24,15 +25,19 @@ class A2CAgent(Agent):
                  value_network: str = 'copy',
                  num_envs_per_worker: int = 1,
                  num_workers: int = 1,
+                 use_critic: bool = True,
+                 use_gae: bool = True,
+                 lam: float = 1.0,
                  gamma: float = 0.99,
-                 nsteps: int = 5,
+                 nsteps: int = 20,
                  ent_coef: float = 0.01,
-                 vf_coef: float = 0.25,
-                 learning_rate: float = 0.0001,
-                 max_grad_norm: float = 0.5,
-                 rho: float = 0.99,
-                 epsilon: float = 1e-5):
+                 vf_coef: float = 0.5,
+                 lr: float = 0.0001,
+                 lr_schedule: str = 'constant',
+                 max_grad_norm: float = 0.5):
         super().__init__(env_fn)
+
+        assert lr_schedule in {'linear', 'constant'}, 'lr_schedule must be "linear" or "constant"'
 
         env = self.make_env()
 
@@ -46,13 +51,18 @@ class A2CAgent(Agent):
 
         self.num_envs_per_worker = num_envs_per_worker
         self.num_workers = num_workers
+        self.use_critic = use_critic
+        self.use_gae = use_gae
+        self.lam = lam
         self.gamma = gamma
         self.nsteps = nsteps
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
+        self.lr = lr
+        self.lr_schedule = lr_schedule
         self.max_grad_norm = max_grad_norm
 
-        self.optimizer = tf.optimizers.RMSprop(learning_rate=learning_rate, rho=rho, epsilon=epsilon)
+        self.optimizer = None
 
     @property
     def timesteps_per_iteration(self):
@@ -89,12 +99,25 @@ class A2CAgent(Agent):
             'value_explained_variance': value_explained_variance
         }
 
+    def act(self, obs, state=None):
+        pi, _ = self.policy(obs)
+        return pi.mode()
+
+    def setup(self, total_timesteps):
+        if self.lr_schedule == 'linear':
+            lr = LinearDecay(self.lr, total_timesteps // self.timesteps_per_iteration)
+        else:
+            lr = self.lr
+
+        self.optimizer = tf.keras.optimizers.Adam(lr)
+
     def train(self) -> Tuple[Dict[str, float], List[Dict]]:
         self.runner.update_policies(self.policy.get_weights())
 
         episodes, ep_infos = self.runner.run(self.nsteps)
 
-        episodes.for_each(AdvantagePostprocessor(self.policy, self.gamma, use_gae=False))
+        episodes.for_each(AdvantagePostprocessor(self.policy, self.gamma, self.lam, self.use_gae, self.use_critic))
+
         batch = episodes.to_sample_batch().shuffle()
 
         metrics = self._update(batch[SampleBatch.OBS],
@@ -103,7 +126,3 @@ class A2CAgent(Agent):
                                batch[SampleBatch.RETURNS])
 
         return metrics, ep_infos
-
-    def act(self, obs, state=None):
-        pi, _ = self.policy(obs)
-        return pi.mode()

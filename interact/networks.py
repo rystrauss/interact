@@ -2,6 +2,7 @@
 
 Author: Ryan Strauss
 """
+
 import gin
 import tensorflow as tf
 from tensorflow.keras import Sequential
@@ -26,7 +27,6 @@ def build_network_fn(network, input_shape):
     Args:
         network: The type of network to be built.
         input_shape: The network's input shape. Should correspond to the shape of the environment's observations.
-        **network_kwargs: Keyword arguments to be passed to the network building function.
 
     Returns:
         A function that returns the specified network, as a `tf.keras.Model`.

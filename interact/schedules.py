@@ -1,3 +1,8 @@
+"""Learning rate schedules.
+
+Author: Ryan Strauss
+"""
+
 import tensorflow as tf
 
 

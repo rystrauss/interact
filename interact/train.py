@@ -23,7 +23,6 @@ def train(agent: str,
           log_dir: str = None,
           log_interval: int = 10,
           save_interval: int = 100,
-          callbacks: List[Callable] = None,
           verbose=True) -> Agent:
     if log_dir is None:
         log_dir = os.path.join('logs', env_id, agent)
@@ -33,6 +32,7 @@ def train(agent: str,
     logger = Logger(log_dir)
 
     agent = get_agent(agent)(make_env_fn(env_id))
+    agent.setup(total_timesteps)
 
     checkpoint = tf.train.Checkpoint(agent=agent)
     ckpt_dir = os.path.join(log_dir, 'checkpoints')
@@ -55,10 +55,10 @@ def train(agent: str,
         update += 1
         ep_info_buf.extend(ep_infos)
 
+        curr_timesteps = agent.timesteps_per_iteration * update
         if update % log_interval == 0:
             metric_results = {k: v.result() for k, v in metrics.items()}
-            logger.log_scalars(update, prefix='agent', **metric_results)
-            # TODO: Log total timesteps
+            logger.log_scalars(curr_timesteps, prefix='agent', **metric_results)
 
             for metric in metrics.values():
                 metric.reset_states()
@@ -68,14 +68,10 @@ def train(agent: str,
                     'reward_mean': np.mean([ep_info['reward'] for ep_info in ep_info_buf]),
                     'length_mean': np.mean([ep_info['length'] for ep_info in ep_info_buf])
                 }
-                logger.log_scalars(update, prefix='episode', **episode_data)
+                logger.log_scalars(curr_timesteps, prefix='episode', **episode_data)
 
         if save_interval is not None and update % save_interval == 0:
-            manager.save(update)
-
-        if callbacks is not None:
-            # TODO: Implement callbacks
-            pass
+            manager.save(curr_timesteps)
 
         pbar.update(agent.timesteps_per_iteration)
 
