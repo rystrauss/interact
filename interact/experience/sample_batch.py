@@ -9,7 +9,6 @@ class SampleBatch:
     ACTIONS = 'actions'
     REWARDS = 'rewards'
     DONES = 'dones'
-    NEXT_DONES = 'next_dones'
     INFOS = 'infos'
 
     ACTION_LOGP = 'action_logp'
@@ -69,11 +68,6 @@ class SampleBatch:
             for i in range(len(row)):
                 if i == len(row) - 1 or row[start] != row[end]:
                     slices.append(SampleBatch({k: v[j, start:end] for k, v in self._data.items()}, _finished=True))
-
-                    if i == len(row) - 1:
-                        slices[-1]._data[SampleBatch.NEXT_OBS] = self._data[SampleBatch.NEXT_OBS][j]
-                        slices[-1]._data[SampleBatch.NEXT_DONES] = self._data[SampleBatch.NEXT_DONES][j]
-
                     start = end
 
                 end += 1

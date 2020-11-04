@@ -1,5 +1,7 @@
+import copy
 import itertools
 import os
+import uuid
 
 import numpy as np
 import ray
@@ -22,7 +24,7 @@ class Worker:
                             dtype=self.env.observation_space.dtype)
         self.obs[:] = self.env.reset()
         self.dones = [False for _ in range(self.env.num_envs)]
-        self.eps_ids = list(range(self.env.num_envs))
+        self.eps_ids = [uuid.uuid4().int for _ in range(self.env.num_envs)]
 
     def collect(self, num_steps=1):
         batch = SampleBatch()
@@ -32,8 +34,7 @@ class Worker:
             data = self.policy.step(self.obs)
 
             data[SampleBatch.OBS] = self.obs.copy()
-            data[SampleBatch.DONES] = self.dones
-            data[SampleBatch.EPS_ID] = self.eps_ids
+            data[SampleBatch.EPS_ID] = copy.copy(self.eps_ids)
 
             batch.add(**data)
 
@@ -45,11 +46,11 @@ class Worker:
 
             for i, done in enumerate(self.dones):
                 if done:
-                    self.eps_ids[i] = (self.eps_ids[i] // self.env.num_envs) + i
+                    self.eps_ids[i] = uuid.uuid4().int
 
             batch.add(**{
                 SampleBatch.REWARDS: rewards,
-                SampleBatch.NEXT_DONES: self.dones,
+                SampleBatch.DONES: self.dones,
                 SampleBatch.NEXT_OBS: self.obs.copy()
             })
 

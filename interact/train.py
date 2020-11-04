@@ -65,8 +65,8 @@ def train(agent: str,
 
             if ep_info_buf:
                 episode_data = {
-                    'reward_mean': np.nanmean([ep_info['reward'] for ep_info in ep_info_buf]),
-                    'length_mean': np.nanmean([ep_info['length'] for ep_info in ep_info_buf])
+                    'reward_mean': np.mean([ep_info['reward'] for ep_info in ep_info_buf]),
+                    'length_mean': np.mean([ep_info['length'] for ep_info in ep_info_buf])
                 }
                 logger.log_scalars(update, prefix='episode', **episode_data)
 

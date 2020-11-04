@@ -10,9 +10,6 @@ from interact.policies.actor_critic import ActorCriticPolicy
 def discount_cumsum(x: np.ndarray, gamma: float) -> float:
     """Calculates the discounted cumulative sum over a reward sequence `x`.
 
-    y[t] - discount * y[t+1] = x[t]
-    reversed(y)[t] - discount * reversed(y)[t-1] = reversed(x)[t]
-
     Args:
         gamma (float): The discount factor gamma.
 
@@ -98,6 +95,12 @@ class EpisodeBatch:
 
         self._episodes = kwargs.get('episodes')
 
+    def __len__(self):
+        return len(self._episodes)
+
+    def __getitem__(self, item):
+        return self._episodes[0]
+
     @classmethod
     def from_episodes(cls, episodes):
         return cls(episodes=episodes, internal=True)
@@ -107,11 +110,10 @@ class EpisodeBatch:
             postprocessor.apply(ep)
 
     def to_sample_batch(self):
-        stacked_data = {}
+        merged_data = {}
 
         for key in self._episodes[0].keys():
-            if key not in {SampleBatch.NEXT_OBS, SampleBatch.NEXT_DONES}:
-                stacked_data[key] = np.concatenate([t[key] for t in self._episodes], axis=0)
+            merged_data[key] = np.concatenate([t[key] for t in self._episodes], axis=0)
 
-        stacked_batch = SampleBatch(stacked_data, _finished=True)
-        return stacked_batch
+        merged_batch = SampleBatch(merged_data, _finished=True)
+        return merged_batch

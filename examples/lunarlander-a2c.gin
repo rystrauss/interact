@@ -1,0 +1,11 @@
+train.agent = 'a2c'
+train.env_id = 'LunarLander-v2'
+train.total_timesteps = 400000
+
+a2c.num_envs_per_worker = 1
+a2c.num_workers = 8
+a2c.ent_coef = 0.00001
+a2c.nsteps = 10
+a2c.learning_rate = 0.00083
+a2c.vf_coef = 0.5
+a2c.gamma = 0.995
