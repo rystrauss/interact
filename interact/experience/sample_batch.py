@@ -4,6 +4,12 @@ import numpy as np
 
 
 class SampleBatch:
+    """Represents a batch of environment experience.
+
+    Adapted from RLLib:
+    https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py
+    """
+
     OBS = 'obs'
     NEXT_OBS = 'next_obs'
     ACTIONS = 'actions'
@@ -40,6 +46,7 @@ class SampleBatch:
         return self._finished
 
     def add(self, **kwargs):
+        """Adds data to this batch."""
         if self._finished:
             raise RuntimeError('Cannot add to a trajectory that has already been finished.')
 
@@ -56,6 +63,11 @@ class SampleBatch:
         return self._data.items()
 
     def extract_episodes(self) -> List["SampleBatch"]:
+        """Parses the batch to partition experience by episodes.
+
+        Returns:
+            A list of samples batches where each batch contains only data from a single episode.
+        """
         assert not self._finished, 'Cannot extract episodes from a finished sample batch.'
 
         for key in self._data.keys():
@@ -77,6 +89,7 @@ class SampleBatch:
         return slices
 
     def shuffle(self):
+        """Shuffles the data in the batch while being consistent across keys."""
         assert self._finished, 'Trying to shuffle an unfinished sample batch.'
 
         sizes = [len(v) for v in self._data.values()]

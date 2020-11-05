@@ -1,12 +1,11 @@
-"""Module that provides an interface for building networks.
-
-Author: Ryan Strauss
-"""
+from typing import Callable
 
 import gin
 import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense, Conv2D, Flatten, Lambda
+
+from interact.typing import TensorShape
 
 _mapping = {}
 
@@ -21,7 +20,7 @@ def register(name):
     return _thunk
 
 
-def build_network_fn(network, input_shape):
+def build_network_fn(network: str, input_shape: TensorShape) -> Callable[[], tf.keras.Model]:
     """Returns a function that builds a network of the specified type.
 
     Args:
@@ -41,7 +40,7 @@ def build_network_fn(network, input_shape):
 
 @gin.configurable(name_or_fn='mlp', blacklist=['input_shape'])
 @register('mlp')
-def build_mlp(input_shape, units=(64, 64), activation='relu'):
+def build_mlp(input_shape: TensorShape, units: TensorShape = (64, 64), activation: str = 'relu') -> tf.keras.Model:
     """Build a fully-connected feed-forward network, or multilayer-perceptron.
 
     Args:
@@ -64,7 +63,9 @@ def build_mlp(input_shape, units=(64, 64), activation='relu'):
 
 @gin.configurable(name_or_fn='cnn', blacklist=['input_shape'])
 @register('cnn')
-def build_nature_cnn(input_shape, scale_inputs=True, units=(512,)):
+def build_nature_cnn(input_shape: TensorShape,
+                     scale_inputs: bool = True,
+                     units: TensorShape = (512,)) -> tf.keras.Model:
     """Builds a convolutional neural network.
 
     Defaults to the network described in the DQN Nature article.

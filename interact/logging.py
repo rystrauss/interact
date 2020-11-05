@@ -1,8 +1,3 @@
-"""Utilities for logging information during agent training.
-
-Author: Ryan Strauss
-"""
-
 import os
 from enum import Enum
 

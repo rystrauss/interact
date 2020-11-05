@@ -1,7 +1,6 @@
 import os
 from collections import deque
 from datetime import datetime
-from typing import List, Callable
 
 import click
 import gin
@@ -24,6 +23,21 @@ def train(agent: str,
           log_interval: int = 10,
           save_interval: int = 100,
           verbose=True) -> Agent:
+    """Trains an agent by repeatedly executing its `train` method.
+
+    Args:
+        agent: The type of agent to train.
+        env_id: The ID of the environment to train in. Should be a registered Gym environment.
+        total_timesteps: The total number of environment timesteps for which the agent should be trained.
+        log_dir: The directory to which the agent and training information should be saved.
+        log_interval: The frequency, in terms of calls to the agent's `train` method, with which logs should be saved.
+        save_interval: The frequency, in terms of calls to the agent's `train` method, with which model weights
+            should be saved.
+        verbose: A boolean indicating whether or not to display a training progress bar.
+
+    Returns:
+        The trained agent.
+    """
     if log_dir is None:
         log_dir = os.path.join('logs', env_id, agent)
 
@@ -82,7 +96,7 @@ def train(agent: str,
 
 @click.command()
 @click.option('--config', type=click.Path(dir_okay=False, exists=True), nargs=1, required=True,
-              help='Path to the configuration file to use.')
+              help='Path to the Gin configuration file to use.')
 def main(config):
     ray.init()
     gin.parse_config_file(config)
