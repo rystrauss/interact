@@ -18,6 +18,30 @@ from interact.schedules import LinearDecay
 @gin.configurable(name_or_fn='a2c', blacklist=['env_fn'])
 @register('a2c')
 class A2CAgent(Agent):
+    """The advantage actor-critic algorithm.
+
+    Advantage Actor-Critic (A2C) is a relatively simply actor-critic method which uses the advantage function
+    (returns minus values) as the baseline in the policy update.
+
+    Args:
+        env_fn:
+        policy_network: The type of model to use for the policy network.
+        value_network: Either 'copy' or 'shared', indicating whether or not weights should be shared between
+            the policy and value networks.
+        num_envs_per_worker: The number of synchronous environments to be executed in each worker.
+        num_workers: The number of parallel workers to use for experience collection.
+        use_critic: Whether to use critic (value estimates). Setting this to False will use 0 as baseline.
+            If this is false, the agent becomes a vanilla actor-critic method.
+        use_gae: Whether or not to use GAE.
+        lam: The lambda parameter used in GAE.
+        gamma: The discount factor.
+        nsteps: The number of steps taken in each environment per update.
+        ent_coef: The coefficient of the entropy term in the loss function.
+        vf_coef: The coefficient of the value term in the loss function.
+        lr: The initial learning rate.
+        lr_schedule: The schedule for the learning rate, either 'constant' or 'linear'.
+        max_grad_norm: The maximum value for the gradient clipping.
+    """
 
     def __init__(self,
                  env_fn: Callable[[], gym.Env],
@@ -71,7 +95,7 @@ class A2CAgent(Agent):
     @tf.function
     def _update(self, obs, actions, advantages, returns):
         with tf.GradientTape() as tape:
-            # Compute the policy for the given observations
+            # Compute the policy and value predictions for the given observations
             pi, value_preds = self.policy(obs)
             # Retrieve policy entropy and the negative log probabilities of the actions
             neglogpacs = -pi.log_prob(actions)
@@ -90,6 +114,7 @@ class A2CAgent(Agent):
         # Apply the gradient update
         self.optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
 
+        # This is a measure of how well the value function explains the variance in the rewards
         value_explained_variance = explained_variance(returns, value_preds)
 
         return {
@@ -99,6 +124,7 @@ class A2CAgent(Agent):
             'value_explained_variance': value_explained_variance
         }
 
+    @tf.function
     def act(self, obs, state=None):
         pi, _ = self.policy(obs)
         return pi.mode()
@@ -112,14 +138,19 @@ class A2CAgent(Agent):
         self.optimizer = tf.keras.optimizers.Adam(lr)
 
     def train(self) -> Tuple[Dict[str, float], List[Dict]]:
+        # Update the weights of the actor policies to be consistent with the most recent update.
         self.runner.update_policies(self.policy.get_weights())
 
+        # Rollout the current policy in the environment to get back a batch of experience.
         episodes, ep_infos = self.runner.run(self.nsteps)
 
+        # Compute advantages for the collected experience.
         episodes.for_each(AdvantagePostprocessor(self.policy, self.gamma, self.lam, self.use_gae, self.use_critic))
 
+        # Aggregate the collected experience so that a gradient update can be performed.
         batch = episodes.to_sample_batch().shuffle()
 
+        # Update the policy and value function based on the new experience.
         metrics = self._update(batch[SampleBatch.OBS],
                                batch[SampleBatch.ACTIONS],
                                batch[SampleBatch.ADVANTAGES],

@@ -115,7 +115,7 @@ class Runner:
         policy_fn: A function that returns a Policy when called. The returned Policy is used to collect
             experience.
         num_envs_per_worker: The number of environments to synchronously execute within each worker.
-        num_workers: THe number of parallel workers to use for experience collection.
+        num_workers: The number of parallel workers to use for experience collection.
     """
 
     def __init__(self,
