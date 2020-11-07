@@ -6,6 +6,7 @@ import tensorflow as tf
 from tensorflow_probability import distributions as tfd
 
 from interact.experience.sample_batch import SampleBatch
+from interact.math_utils import NormcInitializer
 from interact.policies.base import Policy
 
 layers = tf.keras.layers
@@ -47,11 +48,12 @@ class ActorCriticPolicy(Policy):
             self._policy_fn = layers.Dense(action_space.n)
             self._is_discrete = True
         else:
-            self._policy_fn = layers.Dense(action_space.shape[0])
-            self._policy_logstds = self.add_weight('policy_logstds', shape=(action_space.shape[0],), trainable=True)
+            self._policy_fn = layers.Dense(action_space.shape[0], kernel_initializer=NormcInitializer())
+            self._policy_logstds = self.add_weight('policy_logstds', shape=(action_space.shape[0],), trainable=True,
+                                                   initializer=NormcInitializer())
             self._is_discrete = False
 
-        self._value_fn = layers.Dense(1)
+        self._value_fn = layers.Dense(1, kernel_initializer=NormcInitializer())
 
     def make_pdf(self, latent):
         if self._is_discrete:

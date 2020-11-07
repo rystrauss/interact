@@ -1,8 +1,3 @@
-"""This module contains environment wrappers.
-
-Author: Ryan Strauss
-"""
-
 import gym
 import numpy as np
 

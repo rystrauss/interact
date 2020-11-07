@@ -1,10 +1,3 @@
-"""This module provides wrappers for Atari environments.
-
-These wrappers are adapted from OpenAI's Baselines.
-
-Author: Ryan Strauss
-"""
-
 from collections import deque
 
 import cv2

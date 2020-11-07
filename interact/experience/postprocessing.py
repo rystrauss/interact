@@ -5,13 +5,17 @@ from scipy import signal
 
 from interact.experience.sample_batch import SampleBatch
 from interact.policies.actor_critic import ActorCriticPolicy
+from interact.policies.base import Policy
 
 
 def discount_cumsum(x: np.ndarray, gamma: float) -> float:
     """Calculates the discounted cumulative sum over a reward sequence `x`.
 
+    This implementation comes from RLLib:
+    https://github.com/ray-project/ray/blob/61e41257e7b5aa15d10e3e968516906d94bdf30a/rllib/evaluation/postprocessing.py#L7
+
     Args:
-        gamma (float): The discount factor gamma.
+        gamma: The discount factor gamma.
 
     Returns:
         float: The discounted cumulative sum over the reward sequence `x`.
@@ -24,7 +28,23 @@ def compute_advantages(rollout: SampleBatch,
                        gamma: float = 0.9,
                        lam: float = 1.0,
                        use_gae: bool = True,
-                       use_critic: bool = True):
+                       use_critic: bool = True) -> SampleBatch:
+    """Given a rollout, compute its value targets and the advantages.
+
+    This implementation comes from RLLib:
+    https://github.com/ray-project/ray/blob/61e41257e7b5aa15d10e3e968516906d94bdf30a/rllib/evaluation/postprocessing.py#L30
+
+    Args:
+        rollout: SampleBatch of a single trajectory.
+        last_r: Value estimation for last observation.
+        gamma: Discount factor.
+        lambda: Parameter for GAE.
+        use_gae: Using Generalized Advantage Estimation.
+        use_critic: Whether to use critic (value estimates). Setting this to False will use 0 as baseline.
+
+    Returns:
+        The modified SampleBatch which has been updated with advantages.
+    """
     rollout_size = len(rollout[SampleBatch.ACTIONS])
 
     assert SampleBatch.VALUE_PREDS in rollout or not use_critic, 'use_critic=True but values not found'
@@ -56,15 +76,42 @@ def compute_advantages(rollout: SampleBatch,
 
 
 class Postprocessor(ABC):
+    """An abstract class representing a postprocessing transformation that can be applied to a `SampleBatch`."""
 
     @abstractmethod
     def apply(self, episode: SampleBatch):
+        """Applied this postprocessing transformation to the given `SampleBatch`.
+
+        The batch is assumed to contain a single episode.
+
+        Args:
+            episode: The `SampleBatch` to be processed.
+
+        Returns:
+            None
+        """
         pass
 
 
 class AdvantagePostprocessor(Postprocessor):
+    """A postprocessor which computes advantages for an episode.
 
-    def __init__(self, policy, gamma=0.99, lam=0.95, use_gae=True, use_critic=True):
+    Generalized Advantage Estimation can optionally be used to compute advantages.
+
+    Args:
+        policy: A Policy to be used to calculate bootstrapping value estimates. This Policy must have a `value` method.
+        gamma: The discount factor.
+        lam: The lambda parameter used in GAE.
+        use_gae: Whether or not to use GAE.
+        use_critic: Whether to use critic (value estimates). Setting this to False will use 0 as baseline.
+    """
+
+    def __init__(self,
+                 policy: Policy,
+                 gamma: float = 0.99,
+                 lam: float = 0.95,
+                 use_gae: bool = True,
+                 use_critic: bool = True):
         assert isinstance(policy, ActorCriticPolicy)
         self.policy = policy
         self.gamma = gamma
@@ -85,35 +132,3 @@ class AdvantagePostprocessor(Postprocessor):
             self.lam,
             self.use_gae,
             self.use_critic)
-
-
-class EpisodeBatch:
-
-    def __init__(self, **kwargs):
-        if not kwargs.get('internal'):
-            raise ValueError('This class is only meant to be directly instantiated internally.')
-
-        self._episodes = kwargs.get('episodes')
-
-    def __len__(self):
-        return len(self._episodes)
-
-    def __getitem__(self, item):
-        return self._episodes[0]
-
-    @classmethod
-    def from_episodes(cls, episodes):
-        return cls(episodes=episodes, internal=True)
-
-    def for_each(self, postprocessor: Postprocessor):
-        for ep in self._episodes:
-            postprocessor.apply(ep)
-
-    def to_sample_batch(self):
-        merged_data = {}
-
-        for key in self._episodes[0].keys():
-            merged_data[key] = np.concatenate([t[key] for t in self._episodes], axis=0)
-
-        merged_batch = SampleBatch(merged_data, _finished=True)
-        return merged_batch

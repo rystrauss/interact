@@ -5,6 +5,7 @@ import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense, Conv2D, Flatten, Lambda
 
+from interact.math_utils import NormcInitializer
 from interact.typing import TensorShape
 
 _mapping = {}
@@ -56,7 +57,7 @@ def build_mlp(input_shape: TensorShape, units: TensorShape = (64, 64), activatio
     layers = [Flatten(input_shape=input_shape)]
 
     for n in units:
-        layers.append(Dense(n, activation=activation))
+        layers.append(Dense(n, activation=activation, kernel_initializer=NormcInitializer()))
 
     return Sequential(layers)
 
@@ -88,7 +89,7 @@ def build_nature_cnn(input_shape: TensorShape,
     else:
         front_layers = [Conv2D(32, 8, 4, activation='relu', input_shape=input_shape)]
 
-    dense_layers = [Dense(n, activation='relu') for n in units]
+    dense_layers = [Dense(n, activation='relu', kernel_initializer=NormcInitializer()) for n in units]
 
     return Sequential([
         *front_layers,

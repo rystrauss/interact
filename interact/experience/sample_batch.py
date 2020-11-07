@@ -6,7 +6,7 @@ import numpy as np
 class SampleBatch:
     """Represents a batch of environment experience.
 
-    Adapted from RLLib:
+    Loosely based on a similar class from RLLib:
     https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py
     """
 
@@ -88,8 +88,12 @@ class SampleBatch:
 
         return slices
 
-    def shuffle(self):
-        """Shuffles the data in the batch while being consistent across keys."""
+    def shuffle(self) -> "SampleBatch":
+        """Shuffles the data in the batch while being consistent across keys.
+
+        Returns:
+            self
+        """
         assert self._finished, 'Trying to shuffle an unfinished sample batch.'
 
         sizes = [len(v) for v in self._data.values()]
