@@ -17,9 +17,8 @@ setuptools.setup(
     python_requires='>=3.6',
     install_requires=[
         'numpy',
-        'tensorflow>=2.2',
+        'tensorflow>=2.3',
         'gym',
-        'cloudpickle',
         'tensorflow-probability',
         'tqdm',
         'click',

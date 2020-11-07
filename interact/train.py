@@ -16,9 +16,9 @@ from interact.logging import Logger
 
 
 @gin.configurable
-def train(agent: str,
-          env_id: str,
-          total_timesteps: int,
+def train(agent: str = None,
+          env_id: str = None,
+          total_timesteps: int = None,
           log_dir: str = None,
           log_interval: int = 10,
           save_interval: int = 100,
@@ -38,6 +38,10 @@ def train(agent: str,
     Returns:
         The trained agent.
     """
+    assert agent is not None, 'train.agent must be set in the config file'
+    assert env_id is not None, 'train.env_id must be set in the config file'
+    assert total_timesteps is not None, 'train.total_timesteps must be set in the config file'
+
     if log_dir is None:
         log_dir = os.path.join('logs', env_id, agent)
 
@@ -98,6 +102,7 @@ def train(agent: str,
 @click.option('--config', type=click.Path(dir_okay=False, exists=True), nargs=1, required=True,
               help='Path to the Gin configuration file to use.')
 def main(config):
+    """Trains an agent."""
     ray.init()
     gin.parse_config_file(config)
     train()

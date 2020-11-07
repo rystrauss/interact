@@ -34,6 +34,6 @@ def get_agent(name: str) -> Type[Agent]:
         The agent class that corresponds to the given name.
     """
     if name not in _mapping:
-        raise ValueError(f'{name} is not a valid agent -- choose from {list(_mapping.keys())}')
+        raise ValueError(f'{name} is not a valid agent -- choose from {available_agents()}')
 
     return _mapping[name]
