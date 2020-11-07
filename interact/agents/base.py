@@ -42,11 +42,14 @@ class Agent(ABC, tf.Module):
         return self._env_fn()
 
     @abstractmethod
-    def train(self) -> Tuple[Dict[str, float], List[Dict]]:
+    def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
         """Performs a single iteration of training for the agent.
 
         The definition of what exactly constitutes one iteration (e.g. how many gradient updates) can
         vary from agent to agent.
+
+        Args:
+            update: The current iteration of training.
 
         Returns:
             metrics: A dictionary of values that should be logged during training.

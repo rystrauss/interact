@@ -88,6 +88,21 @@ class SampleBatch:
 
         return slices
 
+    def to_minibatches(self, num_minibatches):
+        assert self._finished, 'Trying to produces minibatches from an unfinished sample batch.'
+
+        sizes = [len(v) for v in self._data.values()]
+        assert all(s == sizes[0] for s in sizes), \
+            'All values in the sample batch must have the same length in order to produce minibatches.'
+
+        batch_size = sizes[0]
+        minibatch_size = batch_size // num_minibatches
+
+        for start in range(0, batch_size, minibatch_size):
+            end = start + minibatch_size
+            minibatch = SampleBatch({k: v[start:end] for k, v in self._data.items()}, _finished=True)
+            yield minibatch
+
     def shuffle(self) -> "SampleBatch":
         """Shuffles the data in the batch while being consistent across keys.
 

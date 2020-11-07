@@ -20,7 +20,7 @@ def train(agent: str = None,
           env_id: str = None,
           total_timesteps: int = None,
           log_dir: str = None,
-          log_interval: int = 10,
+          log_interval: int = 1,
           save_interval: int = 100,
           verbose=True) -> Agent:
     """Trains an agent by repeatedly executing its `train` method.
@@ -52,6 +52,9 @@ def train(agent: str = None,
     agent = get_agent(agent)(make_env_fn(env_id))
     agent.setup(total_timesteps)
 
+    with open(os.path.join(log_dir, 'config.gin'), 'w') as fp:
+        fp.write(gin.operative_config_str())
+
     checkpoint = tf.train.Checkpoint(agent=agent)
     ckpt_dir = os.path.join(log_dir, 'checkpoints')
     manager = tf.train.CheckpointManager(checkpoint, ckpt_dir, max_to_keep=1)
@@ -62,7 +65,7 @@ def train(agent: str = None,
     update = 0
     pbar = tqdm(total=total_timesteps, desc='Training', disable=not verbose)
     while update * agent.timesteps_per_iteration < total_timesteps:
-        batch_metrics, ep_infos = agent.train()
+        batch_metrics, ep_infos = agent.train(update)
 
         for key, value in batch_metrics.items():
             if key not in metrics:
