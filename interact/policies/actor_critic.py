@@ -48,12 +48,12 @@ class ActorCriticPolicy(Policy):
             self._policy_fn = layers.Dense(action_space.n)
             self._is_discrete = True
         else:
-            self._policy_fn = layers.Dense(action_space.shape[0], kernel_initializer=NormcInitializer())
+            self._policy_fn = layers.Dense(action_space.shape[0], kernel_initializer=NormcInitializer(0.01))
             self._policy_logstds = self.add_weight('policy_logstds', shape=(action_space.shape[0],), trainable=True,
-                                                   initializer=NormcInitializer())
+                                                   initializer=tf.keras.initializers.Zeros())
             self._is_discrete = False
 
-        self._value_fn = layers.Dense(1, kernel_initializer=NormcInitializer())
+        self._value_fn = layers.Dense(1, kernel_initializer=NormcInitializer(0.01))
 
     def make_pdf(self, latent):
         if self._is_discrete:
@@ -76,18 +76,21 @@ class ActorCriticPolicy(Policy):
         return pi, value_preds
 
     @tf.function
-    def _step(self, obs: np.ndarray, states: Union[np.ndarray, None] = None) -> Dict[str, Union[float, np.ndarray]]:
+    def _step(self,
+              obs: np.ndarray,
+              states: Union[np.ndarray, None] = None,
+              **kwargs) -> Dict[str, Union[float, np.ndarray]]:
         pi, value_preds = self.call(obs)
 
         actions = pi.sample()
         action_logp = pi.log_prob(actions)
 
         return {
-            SampleBatch.ACTIONS: actions,
-            SampleBatch.ACTION_LOGP: action_logp,
-            SampleBatch.VALUE_PREDS: value_preds
+            SampleBatch.ACTIONS: actions.numpy(),
+            SampleBatch.ACTION_LOGP: action_logp.numpy(),
+            SampleBatch.VALUE_PREDS: value_preds.numpy()
         }
 
     @tf.function
     def value(self, inputs, **kwargs):
-        return self(inputs, **kwargs)[1]
+        return self(inputs, **kwargs)[1].numpy()

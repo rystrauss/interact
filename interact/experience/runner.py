@@ -39,7 +39,7 @@ class Worker:
         self.dones = [False for _ in range(self.env.num_envs)]
         self.eps_ids = [uuid.uuid4().int for _ in range(self.env.num_envs)]
 
-    def collect(self, num_steps: int = 1) -> Tuple[List[SampleBatch], List[dict]]:
+    def collect(self, num_steps: int = 1, **kwargs) -> Tuple[List[SampleBatch], List[dict]]:
         """Executes the policy in the environment and returns the collected experience.
 
         Args:
@@ -55,14 +55,14 @@ class Worker:
         ep_infos = []
 
         for _ in range(num_steps):
-            data = self.policy.step(self.obs)
+            data = self.policy.step(self.obs, **kwargs)
 
             data[SampleBatch.OBS] = self.obs.copy()
             data[SampleBatch.EPS_ID] = copy.copy(self.eps_ids)
 
             batch.add(**data)
 
-            clipped_actions = data[SampleBatch.ACTIONS].numpy()
+            clipped_actions = data[SampleBatch.ACTIONS]
             if isinstance(self.env.action_space, Box):
                 clipped_actions = np.clip(clipped_actions, self.env.action_space.low, self.env.action_space.high)
 
@@ -128,7 +128,7 @@ class Runner:
         else:
             self._workers = [RemoteWorker.remote(env_fn, policy_fn, num_envs_per_worker) for _ in range(num_workers)]
 
-    def run(self, num_steps: int = 1) -> Tuple[EpisodeBatch, List[dict]]:
+    def run(self, num_steps: int = 1, **kwargs) -> Tuple[EpisodeBatch, List[dict]]:
         """Executes the policy in the environment and returns the collected experience.
 
         Args:
@@ -140,10 +140,10 @@ class Runner:
                 during collection.
         """
         if len(self._workers) == 1:
-            episodes, ep_infos = self._workers[0].collect(num_steps)
+            episodes, ep_infos = self._workers[0].collect(num_steps, **kwargs)
             return EpisodeBatch.from_episodes(episodes), ep_infos
 
-        episodes, ep_infos = zip(*ray.get([w.collect.remote(num_steps) for w in self._workers]))
+        episodes, ep_infos = zip(*ray.get([w.collect.remote(num_steps, **kwargs) for w in self._workers]))
         ep_infos = list(itertools.chain.from_iterable(ep_infos))
         episodes = list(itertools.chain.from_iterable(episodes))
 

@@ -123,7 +123,7 @@ class AdvantagePostprocessor(Postprocessor):
         if episode[SampleBatch.DONES][-1]:
             last_r = 0.0
         else:
-            last_r = self.policy.value(episode[SampleBatch.NEXT_OBS][-1:]).numpy()[0]
+            last_r = self.policy.value(episode[SampleBatch.NEXT_OBS][-1:])[0]
 
         compute_advantages(
             episode,

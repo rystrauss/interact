@@ -56,6 +56,9 @@ class EpisodeBatch:
         Returns:
             A new SampleBatch containing all of the episodes' data.
         """
+        if len(self._episodes) == 1:
+            return self._episodes[0]
+
         merged_data = {}
 
         for key in self._episodes[0].keys():

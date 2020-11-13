@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Generator
 
 import numpy as np
 
@@ -88,7 +88,7 @@ class SampleBatch:
 
         return slices
 
-    def to_minibatches(self, num_minibatches):
+    def to_minibatches(self, num_minibatches: int) -> Generator["SampleBatch", None, None]:
         assert self._finished, 'Trying to produces minibatches from an unfinished sample batch.'
 
         sizes = [len(v) for v in self._data.values()]
@@ -120,3 +120,19 @@ class SampleBatch:
             self._data[key] = value[inds]
 
         return self
+
+    @staticmethod
+    def concat_samples(samples: List["SampleBatch"]) -> "SampleBatch":
+        merged = {}
+
+        for batch in samples:
+            for k, v in batch.items():
+                if k not in merged:
+                    merged[k] = []
+
+                merged[k].append(v)
+
+        for k, v in merged.items():
+            merged[k] = np.vstack(v)
+
+        return SampleBatch(merged, _finished=True)
