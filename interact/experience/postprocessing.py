@@ -112,7 +112,6 @@ class AdvantagePostprocessor(Postprocessor):
                  lam: float = 0.95,
                  use_gae: bool = True,
                  use_critic: bool = True):
-        assert isinstance(policy, ActorCriticPolicy)
         self.policy = policy
         self.gamma = gamma
         self.lam = lam
@@ -123,7 +122,7 @@ class AdvantagePostprocessor(Postprocessor):
         if episode[SampleBatch.DONES][-1]:
             last_r = 0.0
         else:
-            last_r = self.policy.value(episode[SampleBatch.NEXT_OBS][-1:])[0]
+            last_r = np.asarray(self.policy.value(episode[SampleBatch.NEXT_OBS][-1:])[0])
 
         compute_advantages(
             episode,

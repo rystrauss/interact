@@ -61,5 +61,4 @@ class RandomPolicy(Policy):
               **kwargs) -> Dict[str, Union[float, np.ndarray, List]]:
         return {
             SampleBatch.ACTIONS: np.array([self.action_space.sample() for _ in range(len(obs))]),
-            SampleBatch.VALUE_PREDS: np.random.random(len(obs))
         }

@@ -115,7 +115,7 @@ class SampleBatch:
         assert all(s == sizes[0] for s in sizes), \
             'All values in the sample batch must have the same length in order to shuffle.'
 
-        inds = np.random.choice(sizes[0], (sizes[0],), replace=False)
+        inds = np.random.permutation(sizes[0])
         for key, value in self._data.items():
             self._data[key] = value[inds]
 

@@ -86,11 +86,11 @@ class ActorCriticPolicy(Policy):
         action_logp = pi.log_prob(actions)
 
         return {
-            SampleBatch.ACTIONS: actions.numpy(),
-            SampleBatch.ACTION_LOGP: action_logp.numpy(),
-            SampleBatch.VALUE_PREDS: value_preds.numpy()
+            SampleBatch.ACTIONS: actions,
+            SampleBatch.ACTION_LOGP: action_logp,
+            SampleBatch.VALUE_PREDS: value_preds
         }
 
     @tf.function
     def value(self, inputs, **kwargs):
-        return self(inputs, **kwargs)[1].numpy()
+        return self(inputs, **kwargs)[1]

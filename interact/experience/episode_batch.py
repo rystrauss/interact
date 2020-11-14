@@ -24,7 +24,7 @@ class EpisodeBatch:
         return len(self._episodes)
 
     def __getitem__(self, item):
-        return self._episodes[0]
+        return self._episodes[item]
 
     @classmethod
     def from_episodes(cls, episodes: List[SampleBatch]) -> "EpisodeBatch":

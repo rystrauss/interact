@@ -25,11 +25,15 @@ class Worker:
         policy_fn: A function that returns a Policy when called. The returned Policy is used to collect
             experience.
         num_envs: The number of environments to synchronously execute within this worker.
+        seed: Optional seed with which to see this worker's environments.
     """
 
-    def __init__(self, env_fn: Callable[[], Env], policy_fn: Callable[[], Policy], num_envs: int = 1):
+    def __init__(self, env_fn: Callable[[], Env], policy_fn: Callable[[], Policy], num_envs: int = 1, seed: int = None):
         self.env = SyncVectorEnv([env_fn] * num_envs)
-        self.env.seed(int.from_bytes(os.urandom(4), byteorder='big'))
+
+        if seed is None:
+            seed = int.from_bytes(os.urandom(4), byteorder='big')
+        self.env.seed(seed)
 
         self.policy = policy_fn()
 
@@ -62,7 +66,7 @@ class Worker:
 
             batch.add(**data)
 
-            clipped_actions = data[SampleBatch.ACTIONS]
+            clipped_actions = np.asarray(data[SampleBatch.ACTIONS])
             if isinstance(self.env.action_space, Box):
                 clipped_actions = np.clip(clipped_actions, self.env.action_space.low, self.env.action_space.high)
 
@@ -116,17 +120,20 @@ class Runner:
             experience.
         num_envs_per_worker: The number of environments to synchronously execute within each worker.
         num_workers: The number of parallel workers to use for experience collection.
+        seed: Optional seed with which to see this runner's environments.
     """
 
     def __init__(self,
                  env_fn: Callable[[], Env],
                  policy_fn: Callable[[], Policy],
                  num_envs_per_worker: int = 1,
-                 num_workers: int = 1):
+                 num_workers: int = 1,
+                 seed: int = None):
         if num_workers == 1:
-            self._workers = [Worker(env_fn, policy_fn, num_envs_per_worker)]
+            self._workers = [Worker(env_fn, policy_fn, num_envs_per_worker, seed)]
         else:
-            self._workers = [RemoteWorker.remote(env_fn, policy_fn, num_envs_per_worker) for _ in range(num_workers)]
+            self._workers = [
+                RemoteWorker.remote(env_fn, policy_fn, num_envs_per_worker, seed) for _ in range(num_workers)]
 
     def run(self, num_steps: int = 1, **kwargs) -> Tuple[EpisodeBatch, List[dict]]:
         """Executes the policy in the environment and returns the collected experience.
