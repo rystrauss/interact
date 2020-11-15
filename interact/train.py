@@ -49,6 +49,7 @@ def train(agent: str = None,
 
     logger = Logger(log_dir)
 
+    agent_name = agent
     agent = get_agent(agent)(make_env_fn(env_id))
     agent.setup(total_timesteps)
 
@@ -79,7 +80,7 @@ def train(agent: str = None,
         curr_timesteps = agent.timesteps_per_iteration * update
         if update % log_interval == 0:
             metric_results = {k: v.result() for k, v in metrics.items()}
-            logger.log_scalars(curr_timesteps, prefix='agent', **metric_results)
+            logger.log_scalars(curr_timesteps, prefix=agent_name, **metric_results)
 
             for metric in metrics.values():
                 metric.reset_states()
