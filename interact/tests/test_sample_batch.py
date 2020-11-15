@@ -1,7 +1,10 @@
 import numpy as np
 import pytest
 
+from interact.environments.utils import make_env_fn
 from interact.experience.sample_batch import SampleBatch
+from interact.experience.runner import Runner
+from interact.tests.mock_policy import MockPolicy
 
 
 @pytest.fixture
@@ -32,10 +35,6 @@ def unfinished_batch():
 
 @pytest.fixture
 def cartpole_episode_batch():
-    from interact.environments.utils import make_env_fn
-    from interact.experience.runner import Runner
-    from interact.tests.mock_policy import MockPolicy
-
     np.random.seed(91)
     env_fn = make_env_fn('CartPole-v1')
     env = env_fn()
