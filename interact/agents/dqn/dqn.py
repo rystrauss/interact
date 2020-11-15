@@ -17,6 +17,27 @@ from interact.typing import TensorType
 @gin.configurable(name_or_fn='dqn', blacklist=['env_fn'])
 @register('dqn')
 class DQNAgent(Agent):
+    """The Deep Q-Network algorithm.
+
+    Args:
+        env_fn: A function that, when called, returns an instance of the agent's environment.
+        q_network: The type of model to use for the policy network.
+        batch_size: The size of experience batches sampled from the replay buffer.
+        buffer_size: The size of the experience replay buffer. Network update are sampled from this
+            number of most recent frames.
+        train_freq: The frequency (measured in the number of updates) with which the online Q- network is updated.
+        target_update_freq: The frequency (measured in the number of updates) with which the target
+            network is updated.
+        gamma: Discount factor.
+        lr: The learning rate.
+        initial_epsilon: Initial value of epsilon in e-greedy exploration.
+        final_epsilon: Final value of epsilon in e-greedy exploration.
+        epsilon_timesteps: The number of timesteps over which epsilon is annealed.
+        learning_starts: A uniform random policy is run for this number of steps before learning starts,
+            and the resulting experience is used to populate the replay memory.
+        max_grad_norm: The maximum value for the gradient clipping.
+        double: If True, Double Q-Learning is used.
+        """
 
     def __init__(self,
                  env_fn: Callable[[], gym.Env],
@@ -46,15 +67,14 @@ class DQNAgent(Agent):
         self.max_grad_norm = max_grad_norm
         self.double = double
 
-        def policy_fn():
-            return DQNPolicy(self.env.observation_space, self.env.action_space, q_network)
-
         self.env = self.make_env()
-        self.policy = policy_fn()
+        self.policy = DQNPolicy(self.env.observation_space, self.env.action_space, q_network)
         self.optimizer = tf.optimizers.Adam(learning_rate=lr)
         self.epsilon = None
         self.replay_buffer = ReplayBuffer(buffer_size)
-        self.runner = Runner(env_fn, policy_fn, 1, 1)
+        # Because we are only using one local worker, we can just provide a reference to the learner's policy
+        # and not worry about updating the actor's weights during training. This speeds things up considerably.
+        self.runner = Runner(env_fn, lambda: self.policy, 1, 1)
 
     @property
     def timesteps_per_iteration(self) -> int:
@@ -118,11 +138,12 @@ class DQNAgent(Agent):
         return tf.argmax(q_values, axis=-1).numpy()
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
-        self.runner.update_policies(self.policy.get_weights())
-
+        # Get the current value of epsilon for exploration
         current_epsilon = self.epsilon(update)
+        # Take a step in the environment
         batch, ep_infos = self.runner.run(1, epsilon=current_epsilon)
 
+        # Add the new experience to the replay buffer
         self.replay_buffer.add(batch.to_sample_batch())
 
         metrics = {
@@ -130,7 +151,9 @@ class DQNAgent(Agent):
         }
 
         if update > self.learning_starts and update % self.train_freq == 0:
+            # Sample a batch of experience from the replay buffer
             sample = self.replay_buffer.sample(self.batch_size)
+            # Perform an update step using the sampled experience
             metrics.update(self._update(sample[SampleBatch.OBS],
                                         sample[SampleBatch.ACTIONS],
                                         sample[SampleBatch.REWARDS],

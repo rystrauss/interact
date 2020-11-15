@@ -15,6 +15,18 @@ layers = tf.keras.layers
 
 @gin.configurable('qnetwork', whitelist=['dueling', 'dueling_units'])
 class QNetwork(tf.keras.Model):
+    """A `tf.keras.Model` version of a Q-Network.
+
+    This model has the option of using the dueling network architecture.
+
+    Args:
+        observation_space: The observation space of this policy.
+        action_space: The action space of this policy.
+        network: The type of network to use (e.g. 'cnn', 'mlp').
+        dueling: A boolean indicating whether or not to use the dueling architecture.
+        dueling_units: The number of hidden units in the first layer of each stream in the dueling network.
+            Only applicable if `dueling` is True.
+    """
 
     def __init__(self,
                  observation_space: gym.Space,
@@ -42,8 +54,18 @@ class QNetwork(tf.keras.Model):
 
 
 class DQNPolicy(Policy):
+    """A policy for a DQN agent.
+
+    This policy encapsulates the online Q-network and the target network, and uses an epsilon-greedy exploration policy.
+
+    Args:
+        observation_space: The observation space of this policy.
+        action_space: The action space of this policy.
+        network: The type of network to use (e.g. 'cnn', 'mlp').
+    """
 
     def __init__(self, observation_space: gym.Space, action_space: gym.Space, network: str = 'cnn'):
+        assert isinstance(action_space, gym.spaces.Discrete)
         super().__init__(observation_space, action_space)
 
         self.q_network = QNetwork(observation_space, action_space, network)
@@ -56,6 +78,7 @@ class DQNPolicy(Policy):
     def update_target_network(self):
         self.target_network.set_weights(self.q_network.get_weights())
 
+    @tf.function
     def _step(self,
               obs: np.ndarray,
               states: Union[np.ndarray, None] = None,
@@ -63,12 +86,11 @@ class DQNPolicy(Policy):
         epsilon = kwargs.get('epsilon')
 
         q_values = self(obs)
-        actions = tf.argmax(q_values, axis=-1).numpy()
-
-        for i in range(len(actions)):
-            if np.random.rand() < epsilon:
-                actions[i] = self.action_space.sample()
+        deterministic_actions = tf.argmax(q_values, axis=-1)
+        random_actions = tf.random.uniform([len(obs)], 0, self.action_space.n, dtype=tf.int64)
+        choose_random = tf.random.uniform([len(obs)], 0, 1) < epsilon
+        stochastic_actions = tf.where(choose_random, random_actions, deterministic_actions)
 
         return {
-            SampleBatch.ACTIONS: actions
+            SampleBatch.ACTIONS: stochastic_actions
         }
