@@ -2,7 +2,5 @@ train.agent = 'a2c'
 train.env_id = 'CartPole-v1'
 train.total_timesteps = 500000
 
-a2c.num_envs_per_worker = 1
-a2c.num_workers = 8
-a2c.ent_coef = 0
-a2c.learning_rate = 0.0005
+a2c.ent_coef = 0.0
+a2c.gamma = 0.9
