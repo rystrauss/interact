@@ -5,7 +5,7 @@ with open('README.md', 'r') as fp:
 
 setuptools.setup(
     name='interact',
-    version='0.1',
+    version='0.2',
     packages=setuptools.find_packages(),
     url='https://github.com/rystrauss/interact',
     license='LICENSE',
@@ -22,6 +22,7 @@ setuptools.setup(
         'tensorflow-probability',
         'tqdm',
         'click',
-        'opencv-python'
+        'opencv-python',
+        'ray'
     ]
 )
