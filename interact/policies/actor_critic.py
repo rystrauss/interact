@@ -46,17 +46,17 @@ class ActorCriticPolicy(Policy):
 
         if isinstance(action_space, gym.spaces.Discrete):
             self._policy_fn = layers.Dense(action_space.n)
-            self._is_discrete = True
+            self.is_discrete = True
         else:
             self._policy_fn = layers.Dense(action_space.shape[0], kernel_initializer=NormcInitializer(0.01))
             self._policy_logstds = self.add_weight('policy_logstds', shape=(action_space.shape[0],), trainable=True,
                                                    initializer=tf.keras.initializers.Zeros())
-            self._is_discrete = False
+            self.is_discrete = False
 
         self._value_fn = layers.Dense(1, kernel_initializer=NormcInitializer(0.01))
 
     def make_pdf(self, latent):
-        if self._is_discrete:
+        if self.is_discrete:
             pi = tfd.Categorical(latent)
         else:
             pi = tfd.MultivariateNormalDiag(latent, tf.exp(self._policy_logstds))

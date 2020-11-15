@@ -18,6 +18,7 @@ class SampleBatch:
     INFOS = 'infos'
 
     ACTION_LOGP = 'action_logp'
+    POLICY_LOGITS = 'policy_logits'
     VALUE_PREDS = 'value_preds'
 
     RETURNS = 'returns'

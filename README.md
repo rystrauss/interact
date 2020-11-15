@@ -37,3 +37,4 @@ Some example configuration files can be found in the [`examples`](examples) dire
 * [A2C](interact/agents/a2c)
 * [DQN](interact/agents/dqn)
 * [PPO](interact/agents/ppo)
+* [PPG](interact/agents/ppg)

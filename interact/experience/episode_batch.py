@@ -38,6 +38,15 @@ class EpisodeBatch:
         """
         return cls(episodes=episodes, internal=True)
 
+    @staticmethod
+    def merge(episodes_batches: List["EpisodeBatch"]) -> "EpisodeBatch":
+        all_eps = []
+
+        for batch in episodes_batches:
+            all_eps.extend(batch._episodes)
+
+        return EpisodeBatch.from_episodes(all_eps)
+
     def for_each(self, postprocessor: Postprocessor):
         """Applies the given postprocessor to all episodes in the batch.
 

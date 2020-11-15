@@ -45,7 +45,7 @@ class PPOAgent(Agent):
         noptepochs: Number of epochs over each batch when optimizing the loss.
         cliprange: Clipping parameter used in the surrogate loss.
         cliprange_schedule: The schedule for the clipping parameter, either 'constant' or 'linear'.
-        """
+    """
 
     def __init__(self,
                  env_fn: Callable[[], gym.Env],
