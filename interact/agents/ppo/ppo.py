@@ -19,6 +19,33 @@ from interact.typing import TensorType
 @gin.configurable(name_or_fn='ppo', blacklist=['env_fn'])
 @register('ppo')
 class PPOAgent(Agent):
+    """The Proximal Policy Optimization algorithm.
+
+    This implementation uses the clipped surrogate objective.
+
+    Args:
+        env_fn: A function that, when called, returns an instance of the agent's environment.
+        policy_network: The type of model to use for the policy network.
+        value_network: Either 'copy' or 'shared', indicating whether or not weights should be shared between
+            the policy and value networks.
+        num_envs_per_worker: The number of synchronous environments to be executed in each worker.
+        num_workers: The number of parallel workers to use for experience collection.
+        use_critic: Whether to use critic (value estimates). Setting this to False will use 0 as baseline.
+            If this is false, the agent becomes a vanilla actor-critic method.
+        use_gae: Whether or not to use GAE.
+        lam: The lambda parameter used in GAE.
+        gamma: The discount factor.
+        nsteps: The number of steps taken in each environment per update.
+        ent_coef: The coefficient of the entropy term in the loss function.
+        vf_coef: The coefficient of the value term in the loss function.
+        lr: The initial learning rate.
+        lr_schedule: The schedule for the learning rate, either 'constant' or 'linear'.
+        max_grad_norm: The maximum value for the gradient clipping.
+        nminibatches: Number of training minibatches per update.
+        noptepochs: Number of epochs over each batch when optimizing the loss.
+        cliprange: Clipping parameter used in the surrogate loss.
+        cliprange_schedule: The schedule for the clipping parameter, either 'constant' or 'linear'.
+        """
 
     def __init__(self,
                  env_fn: Callable[[], gym.Env],
