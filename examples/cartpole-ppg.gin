@@ -1,0 +1,17 @@
+train.agent = 'ppg'
+train.env_id = 'CartPole-v1'
+train.total_timesteps = 500000
+
+ppg.num_workers = 8
+ppg.num_envs_per_worker = 1
+ppg.lr = 0.0005
+ppg.policy_epochs = 6
+ppg.value_epochs = 6
+ppg.nsteps = 32
+ppg.gamma = 0.98
+ppg.lam = 0.8
+ppg.ent_coef = 0.001
+ppg.nminibatches = 1
+ppg.policy_iterations = 8
+
+mlp.units = (32, 32)

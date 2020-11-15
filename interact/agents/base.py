@@ -1,79 +1,74 @@
-"""Base components of agents.
-
-Author: Ryan Strauss
-"""
-
 from abc import ABC, abstractmethod
+from typing import Dict, Callable, Tuple, List
 
-from gym import Env
+import gym
+import tensorflow as tf
+
+from interact.typing import TensorType
 
 
-class Agent(ABC):
-    """Abstract base class for all implemented agents.
-
-    Each agent interacts with the environment by first observing the state of the environment. Based on this
-    observation the agent changes the environment by performing an action.
+class Agent(ABC, tf.Module):
+    """Abstract class that all agents must inherit from.
 
     Args:
-        env: The environment that the agent is bound to.
-        load_path: Optional path to a checkpoint that will be used to initialize the agent's network(s).
+        env_fn: A function that, when called, returns an instance of the agent's environment.
     """
 
-    def __init__(self, *, env, load_path=None):
-        assert isinstance(env, Env), 'env must be an instance of gym.Env'
+    def __init__(self, env_fn: Callable[[], gym.Env]):
+        super().__init__()
+        self._env_fn = env_fn
 
-        self.env = env
-
-        if load_path is not None:
-            self.load(load_path)
-
+    @property
     @abstractmethod
-    def learn(self, *, total_timesteps, logger, log_interval=100, save_interval=None):
-        """Executes the agent's training process.
-
-        Args:
-            total_timesteps: The total number of timesteps in the environment that the agent will train for.
-            logger: The logger to use for saving training information.
-            log_interval: The period (in updates) at which TensorBoard logs will be saved.
-            save_interval: The period (in updates) at which network weights will be saved.
-
-        Returns:
-            None
-        """
+    def timesteps_per_iteration(self) -> int:
+        """Returns the number of environment timesteps that are executed upon each call of the `train` method."""
         pass
 
     @abstractmethod
-    def act(self, observation):
-        """Selects the action to be taken based on an observation from an environment.
+    def act(self, obs: TensorType, state: List[TensorType] = None) -> TensorType:
+        """Computes actions for the provided observation.
 
         Args:
-            observation: An observation of an environment state.
+            obs: The environment observations.
+            state: An optional list of recurrent states.
 
         Returns:
-            The action prescribed by the agent to be taken in the given state.
+            The agent's actions for the given observations.
         """
         pass
 
+    def make_env(self) -> gym.Env:
+        """Makes a new copy of this agent's environment."""
+        return self._env_fn()
+
     @abstractmethod
-    def load(self, path):
-        """Loads saved weights into the agent's network(s).
+    def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
+        """Performs a single iteration of training for the agent.
+
+        The definition of what exactly constitutes one iteration (e.g. how many gradient updates) can
+        vary from agent to agent.
 
         Args:
-            path: Path to a checkpoint containing the desired weights.
+            update: The current iteration of training.
 
         Returns:
-            None
+            metrics: A dictionary of values that should be logged during training.
+            ep_infos: A list of dictionaries contain info about any episodes which may have been completed during
+                the training iteration.
         """
         pass
 
-    @abstractmethod
-    def save(self, path):
-        """Saves agent's weights to a file.
+    def setup(self, total_timesteps: int):
+        """Performs any necessary setup before training begins.
+
+        This method is always called once before the first call the `train`. Can be overridden to allow for
+        agent specific setup that depends on outside information. For example, this is useful for properly
+        setting learning rate schedules based on the total number of training steps.
 
         Args:
-            path: Location to save weights.
+            total_timesteps: The total number of environment timesteps for which the agent is about to be trained.
 
         Returns:
-            None
+            None.
         """
         pass

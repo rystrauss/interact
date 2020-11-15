@@ -1,96 +1,108 @@
-"""Implementation of the advantage actor-critic algorithm.
+from typing import Dict, Callable, Tuple, List
 
-Author: Ryan Strauss
-"""
-
-import os
-import sys
-from collections import deque
-from typing import Tuple
-
+import gin
+import gym
 import tensorflow as tf
-from tqdm import tqdm
 
-from interact.agents.a2c.runner import Runner
 from interact.agents.base import Agent
-from interact.agents.util import register
-from interact.common.math_util import safe_mean
-from interact.common.policies import build_actor_critic_policy
-from interact.common.schedules import LinearDecay
-from interact.logger import Logger
+from interact.agents.utils import register
+from interact.experience.postprocessing import AdvantagePostprocessor
+from interact.experience.runner import Runner
+from interact.experience.sample_batch import SampleBatch
+from interact.math_utils import explained_variance
+from interact.networks import build_network_fn
+from interact.policies.actor_critic import ActorCriticPolicy
+from interact.schedules import LinearDecay
 
 
+@gin.configurable(name_or_fn='a2c', blacklist=['env_fn'])
 @register('a2c')
 class A2CAgent(Agent):
-    """An agent that learns using the advantage actor-critic algorithm.
+    """The advantage actor-critic algorithm.
+
+    Advantage Actor-Critic (A2C) is a relatively simply actor-critic method which uses the advantage function
+    (returns minus values) as the baseline in the policy update.
 
     Args:
-        env: The environment the agent is interacting with.
-        load_path: A path to a checkpoint that will be loaded before training begins. If None, agent parameters
-            will be initialized from scratch.
-        policy_network: The type of network to be used for the policy.
-        value_network: The method of constructing the value network, either 'shared' or 'copy'.
+        env_fn: A function that, when called, returns an instance of the agent's environment.
+        policy_network: The type of model to use for the policy network.
+        value_network: Either 'copy' or 'shared', indicating whether or not weights should be shared between
+            the policy and value networks.
+        num_envs_per_worker: The number of synchronous environments to be executed in each worker.
+        num_workers: The number of parallel workers to use for experience collection.
+        use_critic: Whether to use critic (value estimates). Setting this to False will use 0 as baseline.
+            If this is false, the agent becomes a vanilla actor-critic method.
+        use_gae: Whether or not to use GAE.
+        lam: The lambda parameter used in GAE.
         gamma: The discount factor.
         nsteps: The number of steps taken in each environment per update.
         ent_coef: The coefficient of the entropy term in the loss function.
-        vf_coef: The coefficiant of the value term in the loss function.
-        learning_rate: The initial learning rate.
+        vf_coef: The coefficient of the value term in the loss function.
+        lr: The initial learning rate.
         lr_schedule: The schedule for the learning rate, either 'constant' or 'linear'.
         max_grad_norm: The maximum value for the gradient clipping.
-        rho: Discounting factor used by RMSprop.
-        epsilon: Constant for numerical stability used by RMSprop.
-        **network_kwargs: Keyword arguments to be passed to the policy/value network.
     """
 
-    def __init__(self, *, env, load_path=None, policy_network='mlp', value_network='copy', gamma=0.99, nsteps=5,
-                 ent_coef=0.01, vf_coef=0.25, learning_rate=0.0001, lr_schedule='constant', max_grad_norm=0.5, rho=0.99,
-                 epsilon=1e-5, **network_kwargs):
-        assert lr_schedule in {'linear', 'constant'}, 'lr_schedule must be either "linear" or "constant"'
+    def __init__(self,
+                 env_fn: Callable[[], gym.Env],
+                 policy_network: str = 'mlp',
+                 value_network: str = 'copy',
+                 num_envs_per_worker: int = 1,
+                 num_workers: int = 8,
+                 use_critic: bool = True,
+                 use_gae: bool = False,
+                 lam: float = 1.0,
+                 gamma: float = 0.99,
+                 nsteps: int = 5,
+                 ent_coef: float = 0.01,
+                 vf_coef: float = 0.25,
+                 lr: float = 0.0001,
+                 lr_schedule: str = 'constant',
+                 max_grad_norm: float = 0.5):
+        super().__init__(env_fn)
 
-        self.policy = build_actor_critic_policy(policy_network, value_network, env, **network_kwargs)
+        assert lr_schedule in {'linear', 'constant'}, 'lr_schedule must be "linear" or "constant"'
+
+        env = self.make_env()
+
+        network_fn = build_network_fn(policy_network, env.observation_space.shape)
+
+        def policy_fn():
+            return ActorCriticPolicy(env.observation_space, env.action_space, network_fn, value_network)
+
+        self.policy = policy_fn()
+        self.runner = Runner(env_fn, policy_fn, num_envs_per_worker=num_envs_per_worker, num_workers=num_workers)
+
+        self.num_envs_per_worker = num_envs_per_worker
+        self.num_workers = num_workers
+        self.use_critic = use_critic
+        self.use_gae = use_gae
+        self.lam = lam
         self.gamma = gamma
         self.nsteps = nsteps
         self.ent_coef = ent_coef
         self.vf_coef = vf_coef
-        self.learning_rate = learning_rate
+        self.lr = lr
         self.lr_schedule = lr_schedule
         self.max_grad_norm = max_grad_norm
-        self.rho = rho
-        self.epsilon = epsilon
+
         self.optimizer = None
 
-        super().__init__(env=env, load_path=load_path)
+    @property
+    def timesteps_per_iteration(self):
+        return self.nsteps * self.num_envs_per_worker * self.num_workers
 
     @tf.function
-    def _train_step(self, obs, returns, actions, values) -> Tuple[float, float, float]:
-        """Performs a policy update.
-
-        A standard actor-critic updates is used where the advantage function is used as the baseline.
-
-        Args:
-            obs: a collection of observations of environment states
-            returns: the returns received from each of the states
-            actions: the actions that were selected in each state
-            values: the values estimates of each state
-
-        Returns:
-            A 3-tuple with the following:
-                policy_loss: the loss of the policy network
-                value_loss: the loss of the value network
-                entropy: the current entropy of the policy
-        """
-        # Calculate the advantages
-        advantages = returns - values
-
+    def _update(self, obs, actions, advantages, returns):
         with tf.GradientTape() as tape:
-            # Compute the policy for the given observations
-            pi = self.policy(obs)
+            # Compute the policy and value predictions for the given observations
+            pi, value_preds = self.policy(obs)
             # Retrieve policy entropy and the negative log probabilities of the actions
-            neglogpacs = tf.reduce_sum(tf.reshape(-pi.log_prob(actions), (len(actions), -1)), axis=-1)
+            neglogpacs = -pi.log_prob(actions)
             entropy = tf.reduce_mean(pi.entropy())
             # Define the individual loss functions
             policy_loss = tf.reduce_mean(advantages * neglogpacs)
-            value_loss = tf.reduce_mean((returns - self.policy.value(obs)) ** 2)
+            value_loss = tf.reduce_mean((returns - value_preds) ** 2)
             # The final loss to be minimized is a combination of the policy and value losses, in addition
             # to an entropy bonus which can be used to encourage exploration
             loss = policy_loss - entropy * self.ent_coef + value_loss * self.vf_coef
@@ -102,62 +114,46 @@ class A2CAgent(Agent):
         # Apply the gradient update
         self.optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
 
-        return policy_loss, value_loss, entropy
+        # This is a measure of how well the value function explains the variance in the rewards
+        value_explained_variance = explained_variance(returns, value_preds)
 
-    def learn(self, *, total_timesteps, logger, log_interval=100, save_interval=None):
-        assert isinstance(logger, Logger), 'logger must be an instance of the `Logger` class'
-
-        # Create the runner that collects experience
-        runner = Runner(self.env, self.policy, self.nsteps, self.gamma)
-
-        # Calculate the number of policy updates that we will perform
-        nupdates = total_timesteps // runner.batch_size
-
-        # Create the optimizer for updating network parameters
-        if self.lr_schedule == 'linear':
-            learning_rate = LinearDecay(self.learning_rate, nupdates)
-        else:
-            learning_rate = self.learning_rate
-        self.optimizer = tf.optimizers.RMSprop(learning_rate=learning_rate, rho=self.rho, epsilon=self.epsilon)
-
-        # Create a buffer that holds information about the 100 most recent episodes
-        ep_info_buf = deque([], maxlen=100)
-
-        for update in tqdm(range(1, nupdates + 1), desc='Updates', file=sys.stdout):
-            # Collect experience from the environment
-            # The rollout is a tuple containing observations, returns, actions, and values
-            # This information constitutes a batch of experience that we will learn from
-            *rollout, ep_infos = runner.run()
-            # Perform a policy update based on the collected experience
-            policy_loss, value_loss, entropy = self._train_step(*rollout)
-
-            # Keep track of episode information for logging purposes
-            ep_info_buf.extend(ep_infos)
-
-            # Periodically log training info
-            if update % log_interval == 0 or update == 1:
-                logger.log_scalar(update, 'total_timesteps', runner.steps)
-                logger.log_scalar(update, 'loss/policy_entropy', entropy)
-                logger.log_scalar(update, 'loss/policy_loss', policy_loss)
-                logger.log_scalar(update, 'loss/value_loss', value_loss)
-
-                if len(ep_info_buf) > 0 and len(ep_info_buf[0]) > 0:
-                    logger.log_scalar(update, 'episode/reward_mean',
-                                      safe_mean([ep_info['r'] for ep_info in ep_info_buf]))
-                    logger.log_scalar(update, 'episode/length_mean',
-                                      safe_mean([ep_info['l'] for ep_info in ep_info_buf]))
-
-            # Periodically save model weights
-            if (save_interval is not None and update % save_interval == 0) or update == nupdates:
-                self.save(os.path.join(logger.directory, 'weights', f'update_{update}'))
+        return {
+            'policy_loss': policy_loss,
+            'value_loss': value_loss,
+            'policy_entropy': entropy,
+            'value_explained_variance': value_explained_variance
+        }
 
     @tf.function
-    def act(self, observation):
-        pi = self.policy(observation)
+    def act(self, obs, state=None):
+        pi, _ = self.policy(obs)
         return pi.mode()
 
-    def load(self, path):
-        self.policy.load_weights(path)
+    def setup(self, total_timesteps):
+        if self.lr_schedule == 'linear':
+            lr = LinearDecay(self.lr, total_timesteps // self.timesteps_per_iteration)
+        else:
+            lr = self.lr
 
-    def save(self, path):
-        self.policy.save_weights(path)
+        self.optimizer = tf.keras.optimizers.Adam(lr)
+
+    def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
+        # Update the weights of the actor policies to be consistent with the most recent update.
+        self.runner.update_policies(self.policy.get_weights())
+
+        # Rollout the current policy in the environment to get back a batch of experience.
+        episodes, ep_infos = self.runner.run(self.nsteps)
+
+        # Compute advantages for the collected experience.
+        episodes.for_each(AdvantagePostprocessor(self.policy, self.gamma, self.lam, self.use_gae, self.use_critic))
+
+        # Aggregate the collected experience so that a gradient update can be performed.
+        batch = episodes.to_sample_batch().shuffle()
+
+        # Update the policy and value function based on the new experience.
+        metrics = self._update(batch[SampleBatch.OBS],
+                               batch[SampleBatch.ACTIONS],
+                               batch[SampleBatch.ADVANTAGES],
+                               batch[SampleBatch.RETURNS])
+
+        return metrics, ep_infos
