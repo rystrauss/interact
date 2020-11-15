@@ -21,7 +21,8 @@ def train(agent: str = None,
           total_timesteps: int = None,
           log_dir: str = None,
           log_interval: int = 1,
-          save_interval: int = 100,
+          save_interval: int = None,
+          save_at_end: bool = False,
           verbose=True) -> Agent:
     """Trains an agent by repeatedly executing its `train` method.
 
@@ -63,6 +64,7 @@ def train(agent: str = None,
     ep_info_buf = deque([], maxlen=100)
     metrics = dict()
 
+    curr_timesteps = 0
     update = 0
     pbar = tqdm(total=total_timesteps, desc='Training', disable=not verbose)
     while update * agent.timesteps_per_iteration < total_timesteps:
@@ -98,6 +100,9 @@ def train(agent: str = None,
         pbar.update(agent.timesteps_per_iteration)
 
     pbar.close()
+
+    if save_at_end:
+        manager.save(curr_timesteps)
 
     return agent
 
