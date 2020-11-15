@@ -5,6 +5,7 @@ train.total_timesteps = 300000
 ppo.num_workers = 8
 ppo.num_envs_per_worker = 1
 ppo.lr = 0.0005
+ppo.cliprange_schedule = 'linear'
 ppo.noptepochs = 6
 ppo.nsteps = 32
 ppo.gamma = 0.98
@@ -12,3 +13,5 @@ ppo.lam = 0.8
 ppo.ent_coef = 0.001
 ppo.nminibatches = 1
 ppo.noptepochs = 20
+
+mlp.units = (32, 32)
