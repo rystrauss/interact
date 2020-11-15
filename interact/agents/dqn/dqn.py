@@ -108,6 +108,10 @@ class DQNAgent(Agent):
         # Apply the gradient update
         self.optimizer.apply_gradients(zip(grads, vars))
 
+        return {
+            'loss': loss
+        }
+
     @tf.function
     def act(self, obs: TensorType, state: List[TensorType] = None) -> TensorType:
         q_values = self.policy(obs)
@@ -115,27 +119,29 @@ class DQNAgent(Agent):
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
         self.runner.update_policies(self.policy.get_weights())
-        batch, ep_infos = self.runner.run(1, epsilon=self.epsilon(update))
+
+        current_epsilon = self.epsilon(update)
+        batch, ep_infos = self.runner.run(1, epsilon=current_epsilon)
 
         self.replay_buffer.add(batch.to_sample_batch())
 
+        metrics = {
+            'epsilon': current_epsilon
+        }
+
         if update > self.learning_starts and update % self.train_freq == 0:
             sample = self.replay_buffer.sample(self.batch_size)
-            self._update(sample[SampleBatch.OBS],
-                         sample[SampleBatch.ACTIONS],
-                         sample[SampleBatch.REWARDS],
-                         sample[SampleBatch.NEXT_OBS],
-                         sample[SampleBatch.DONES])
+            metrics.update(self._update(sample[SampleBatch.OBS],
+                                        sample[SampleBatch.ACTIONS],
+                                        sample[SampleBatch.REWARDS],
+                                        sample[SampleBatch.NEXT_OBS],
+                                        sample[SampleBatch.DONES]))
 
         # Periodically update target network
         if update > self.learning_starts and update % self.target_update_freq == 0:
             self.policy.update_target_network()
 
-        info = {
-            'epsilon': self.epsilon(update)
-        }
-
-        return info, ep_infos
+        return metrics, ep_infos
 
     def setup(self, total_timesteps: int):
         self.epsilon = LinearDecay(initial_learning_rate=self.initial_epsilon,
