@@ -35,3 +35,5 @@ Some example configuration files can be found in the [`examples`](examples) dire
 ## Implemented Algorithms
 
 * [A2C](interact/agents/a2c)
+* [DQN](interact/agents/dqn)
+* [PPO](interact/agents/ppo)

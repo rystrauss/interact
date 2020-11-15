@@ -24,5 +24,10 @@ setuptools.setup(
         'click',
         'opencv-python',
         'ray'
-    ]
+    ],
+    extras_require={
+        'dev': [
+            'pytest'
+        ]
+    }
 )
