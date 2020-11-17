@@ -1,6 +1,7 @@
 import numpy as np
 
 from interact.experience.sample_batch import SampleBatch
+from interact.utils.segment_tree import SumSegmentTree, MinSegmentTree
 
 
 class ReplayBuffer:
@@ -21,7 +22,7 @@ class ReplayBuffer:
     def __len__(self):
         return len(self._storage)
 
-    def add(self, item: SampleBatch):
+    def add(self, item: SampleBatch, weight: float = 1.0):
         for e in item.split():
             if self._next_idx >= len(self._storage):
                 self._storage.append(e)
@@ -45,3 +46,98 @@ class ReplayBuffer:
         """
         idxes = np.random.randint(0, len(self._storage), (num_items,))
         return SampleBatch.concat_samples([self._storage[i] for i in idxes])
+
+
+class PrioritizedReplayBuffer(ReplayBuffer):
+    """A prioritized replay buffer.
+
+    Args:
+        size (int): Max number of items to store in the FIFO buffer.
+        alpha (float): how much prioritization is used
+            (0 - no prioritization, 1 - full prioritization).
+    """
+
+    def __init__(self, size: int, alpha: float, beta: float):
+        super(PrioritizedReplayBuffer, self).__init__(size)
+        assert alpha > 0
+        assert beta >= 0.0
+        self._alpha = alpha
+        self._beta = beta
+
+        it_capacity = 1
+        while it_capacity < size:
+            it_capacity *= 2
+
+        self._it_sum = SumSegmentTree(it_capacity)
+        self._it_min = MinSegmentTree(it_capacity)
+        self._max_priority = 1.0
+
+    def add(self, item: SampleBatch, weight: float = 1.0):
+        idx = self._next_idx
+        super(PrioritizedReplayBuffer, self).add(item, weight)
+        if weight is None:
+            weight = self._max_priority
+        self._it_sum[idx] = weight ** self._alpha
+        self._it_min[idx] = weight ** self._alpha
+
+    def _sample_proportional(self, num_items: int):
+        res = []
+        for _ in range(num_items):
+            mass = np.random.random() * self._it_sum.sum(0, len(self._storage))
+            idx = self._it_sum.find_prefixsum_idx(mass)
+            res.append(idx)
+        return res
+
+    def sample(self, num_items: int) -> SampleBatch:
+        """Sample a batch of experiences and return priority weights, indices.
+
+        Args:
+            num_items (int): Number of items to sample from this buffer.
+
+        Returns:
+            SampleBatchType: Concatenated batch of items including "weights"
+                and "batch_indexes" fields denoting IS of each sampled
+                transition and original idxes in buffer of sampled experiences.
+        """
+        idxes = self._sample_proportional(num_items)
+
+        weights = []
+        batch_indexes = []
+        p_min = self._it_min.min() / self._it_sum.sum()
+        max_weight = (p_min * len(self._storage)) ** (-self._beta)
+
+        for idx in idxes:
+            p_sample = self._it_sum[idx] / self._it_sum.sum()
+            weight = (p_sample * len(self._storage)) ** (-self._beta)
+            weights.append(weight / max_weight)
+            batch_indexes.append(idx)
+
+        batch = SampleBatch.concat_samples([self._storage[i] for i in idxes])
+
+        batch['weights'] = np.array(weights)
+        batch['batch_indices'] = np.array(batch_indexes)
+
+        return batch
+
+    def update_priorities(self, idxes, priorities):
+        """Update priorities of sampled transitions.
+
+        Sets priority of transition at index idxes[i] in buffer to priorities[i].
+
+        Args:
+            idxes: [int]
+              List of idxes of sampled transitions
+            priorities: [float]
+              List of updated priorities corresponding to
+              transitions at the sampled idxes denoted by
+              variable `idxes`.
+        """
+        assert len(idxes) == len(priorities)
+
+        for idx, priority in zip(idxes, priorities):
+            assert priority > 0
+            assert 0 <= idx < len(self._storage)
+            self._it_sum[idx] = priority ** self._alpha
+            self._it_min[idx] = priority ** self._alpha
+
+            self._max_priority = max(self._max_priority, priority)
