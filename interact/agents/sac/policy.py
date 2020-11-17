@@ -9,7 +9,7 @@ from interact.experience.sample_batch import SampleBatch
 from interact.math_utils import NormcInitializer
 from interact.networks import build_network_fn
 from interact.policies.base import Policy
-from interact.typing import TensorShape
+from interact.typing import TensorShape, TensorType
 
 layers = tf.keras.layers
 
@@ -19,7 +19,7 @@ class SquashedGaussianActor(layers.Layer):
     def __init__(self,
                  action_space: gym.Space,
                  base_model_fn: Callable[[], layers.Layer],
-                 action_limit: float = 1.0,
+                 action_limit: Union[TensorType, float] = 1.0,
                  **kwargs):
         super().__init__(**kwargs)
 
@@ -36,9 +36,9 @@ class SquashedGaussianActor(layers.Layer):
         logpacs = pi.log_prob(actions)
         logpacs -= tf.reduce_sum(2 * (np.log(2) - actions - tf.nn.softplus(-2 * actions)), axis=1)
         actions = tf.nn.tanh(actions)
-        actions *= self._action_limit
+        actions *= self._action_limit[None, ...]
 
-        return actions, logpacs
+        return actions, logpacs, pi.entropy()
 
 
 class QFunction(layers.Layer):
@@ -89,10 +89,9 @@ class SACPolicy(Policy):
 
         self.actor_only = actor_only
 
-        action_limit = action_space.high[0]
         base_model_fn = build_network_fn(network, observation_space.shape)
 
-        self.pi = SquashedGaussianActor(action_space, base_model_fn, action_limit, name='actor')
+        self.pi = SquashedGaussianActor(action_space, base_model_fn, action_space.high, name='actor')
 
         if not self.actor_only:
             self.q1 = QFunction(observation_space, action_space, network, name='q1')
@@ -115,7 +114,7 @@ class SACPolicy(Policy):
     def _step(self,
               obs: np.ndarray,
               states: Union[np.ndarray, None] = None, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
-        actions, logpacs = self.pi(obs)
+        actions, logpacs, _ = self.pi(obs)
         return {
             SampleBatch.ACTIONS: actions,
             SampleBatch.ACTION_LOGP: logpacs

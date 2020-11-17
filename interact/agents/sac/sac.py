@@ -17,6 +17,9 @@ from interact.typing import TensorType
 @gin.configurable('sac', blacklist=['env_fn'])
 @register('sac')
 class SACAgent(Agent):
+    # TODO: Add prioritized replay buffer.
+    # TODO: Implement discrete action version.
+    # TODO: Make sure things work if specific target_entropy is provided.
 
     def __init__(self,
                  env_fn: Callable[[], gym.Env],
@@ -31,7 +34,7 @@ class SACAgent(Agent):
                  gamma: float = 0.99,
                  buffer_size: int = 50000,
                  train_freq: int = 1,
-                 batch_size: int = 64,
+                 batch_size: int = 256,
                  num_workers: int = 1,
                  num_envs_per_worker: int = 1):
         super().__init__(env_fn)
@@ -93,7 +96,7 @@ class SACAgent(Agent):
 
     @tf.function
     def _update_critic(self, obs, actions, rewards, next_obs, dones):
-        next_actions, next_logpacs = self.policy.pi(next_obs)
+        next_actions, next_logpacs, _ = self.policy.pi(next_obs)
 
         target_q_values_1 = self.target_policy.q1([next_obs, next_actions])
         target_q_values_2 = self.target_policy.q2([next_obs, next_actions])
@@ -118,7 +121,7 @@ class SACAgent(Agent):
     @tf.function
     def _update_policy_and_alpha(self, obs):
         with tf.GradientTape() as pi_tape, tf.GradientTape() as alpha_tape:
-            actions, logpacs = self.policy.pi(obs)
+            actions, logpacs, entropy = self.policy.pi(obs)
 
             q_values_1 = self.policy.q1([obs, actions])
             q_values_2 = self.policy.q2([obs, actions])
@@ -136,6 +139,7 @@ class SACAgent(Agent):
 
         return {
             'policy_loss': pi_loss,
+            'policy_entropy': tf.reduce_mean(entropy),
             'alpha_loss': alpha_loss,
             'alpha': tf.exp(self.log_alpha)
         }
@@ -160,6 +164,6 @@ class SACAgent(Agent):
             for target_var, q_var in zip(self.target_policy.q_variables, self.policy.q_variables):
                 target_var.assign(self.tau * target_var + (1 - self.tau) * q_var)
 
-            self.runner.update_policies(self.policy.pi.variables)
+            self.runner.update_policies(self.policy.pi.get_weights())
 
         return metrics, ep_infos
