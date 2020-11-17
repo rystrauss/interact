@@ -38,3 +38,4 @@ Some example configuration files can be found in the [`examples`](examples) dire
 * [Deep Q-Networks](interact/agents/dqn)
 * [Proximal Policy Optimization](interact/agents/ppo)
 * [Phasic Policy Gradients](interact/agents/ppg)
+* [Soft Actor-Critic](interact/agents/sac)
