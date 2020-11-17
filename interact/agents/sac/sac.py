@@ -22,6 +22,9 @@ class SACAgent(Agent):
     This is the more modern version of the algorithm, based on:
     https://arxiv.org/abs/1812.05905
 
+    TODO: Implement discrete version.
+    TODO: Add support for prioritized experience replay.
+
     Args:
         env_fn: A function that, when called, returns an instance of the agent's environment.
         network: Base network type to be used by the policy and Q-functions.

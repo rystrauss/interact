@@ -19,6 +19,8 @@ from interact.typing import TensorType
 class DQNAgent(Agent):
     """The Deep Q-Network algorithm.
 
+    TODO: Add support for prioritized experience replay.
+
     Args:
         env_fn: A function that, when called, returns an instance of the agent's environment.
         q_network: The type of model to use for the policy network.
