@@ -5,7 +5,7 @@ import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense, Conv2D, Flatten, Lambda
 
-from interact.math_utils import NormcInitializer
+from interact.utils.math_utils import NormcInitializer
 from interact.typing import TensorShape
 
 _mapping = {}

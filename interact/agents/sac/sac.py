@@ -17,9 +17,29 @@ from interact.typing import TensorType
 @gin.configurable('sac', blacklist=['env_fn'])
 @register('sac')
 class SACAgent(Agent):
-    # TODO: Add prioritized replay buffer.
-    # TODO: Implement discrete action version.
-    # TODO: Make sure things work if specific target_entropy is provided.
+    """The Soft Actor-Critic algorithm.
+
+    This is the more modern version of the algorithm, based on:
+    https://arxiv.org/abs/1812.05905
+
+    Args:
+        env_fn: A function that, when called, returns an instance of the agent's environment.
+        network: Base network type to be used by the policy and Q-functions.
+        actor_lr: Learning rate to use for updating the actor.
+        critic_lr: Learning rate to use for updating the critics.
+        entropy_lr: Learning rate to use for tuning the entropy parameter.
+        learning_starts: Number of timesteps to only collect experience before learning starts.
+        tau: Parameter for the polyak averaging used to update the target networks.
+        initial_alpha: The initial value of the entropy parameter.
+        target_entropy: The target entropy parameter. If 'auto', this is set to -|A|
+            (i.e. the negative cardinality of the action set).
+        gamma: The discount factor.
+        buffer_size: The maximum size of the replay buffer.
+        train_freq: The frequency with which training updates are performed.
+        batch_size: The size of batches sampled from the replay buffer over which updates are performed.
+        num_workers: The number of parallel workers to use for experience collection.
+        num_envs_per_worker: The number of synchronous environments to be executed in each worker.
+    """
 
     def __init__(self,
                  env_fn: Callable[[], gym.Env],

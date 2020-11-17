@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 
 from interact.experience.sample_batch import SampleBatch
-from interact.math_utils import NormcInitializer
+from interact.utils.math_utils import NormcInitializer
 from interact.policies.actor_critic import ActorCriticPolicy
 
 layers = tf.keras.layers

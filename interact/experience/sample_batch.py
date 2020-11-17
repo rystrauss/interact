@@ -24,6 +24,8 @@ class SampleBatch:
     RETURNS = 'returns'
     ADVANTAGES = 'advantages'
 
+    PRIO_WEIGHTS = 'weights'
+
     EPS_ID = 'eps_id'
 
     def __init__(self, *args, **kwargs):
@@ -56,6 +58,9 @@ class SampleBatch:
                 self._data[key] = []
 
             self._data[key].append(value)
+
+    def get(self, item, *args):
+        return self._data.get(item, *args)
 
     def keys(self):
         return self._data.keys()

@@ -6,7 +6,7 @@ import tensorflow as tf
 from tensorflow_probability import distributions as tfd
 
 from interact.experience.sample_batch import SampleBatch
-from interact.math_utils import NormcInitializer
+from interact.utils.math_utils import NormcInitializer
 from interact.networks import build_network_fn
 from interact.policies.base import Policy
 from interact.typing import TensorShape, TensorType
@@ -34,6 +34,16 @@ class SquashedGaussianActor(layers.Layer):
         pi = tfd.MultivariateNormalDiag(means, tf.exp(logstds))
         actions = pi.sample()
         logpacs = pi.log_prob(actions)
+        #  This formula is mathematically equivalent to
+        #  `tf.log1p(-tf.square(tf.tanh(x)))`, however this code is more numerically stable.
+        #
+        #  Derivation:
+        #    log(1 - tanh(x)^2)
+        #    = log(sech(x)^2)
+        #    = 2 * log(sech(x))
+        #    = 2 * log(2e^-x / (e^-2x + 1))
+        #    = 2 * (log(2) - x - log(e^-2x + 1))
+        #    = 2 * (log(2) - x - softplus(-2x))
         logpacs -= tf.reduce_sum(2 * (np.log(2) - actions - tf.nn.softplus(-2 * actions)), axis=1)
         actions = tf.nn.tanh(actions)
         actions *= self._action_limit[None, ...]

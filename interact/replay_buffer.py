@@ -22,7 +22,15 @@ class ReplayBuffer:
     def __len__(self):
         return len(self._storage)
 
-    def add(self, item: SampleBatch, weight: float = 1.0):
+    def add(self, item: SampleBatch):
+        """Adds experience to the replay buffer.
+
+        Args:
+            item: A sample batch of experience to be added.
+
+        Returns:
+            None.
+        """
         for e in item.split():
             if self._next_idx >= len(self._storage):
                 self._storage.append(e)
@@ -72,13 +80,34 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_min = MinSegmentTree(it_capacity)
         self._max_priority = 1.0
 
-    def add(self, item: SampleBatch, weight: float = 1.0):
-        idx = self._next_idx
-        super(PrioritizedReplayBuffer, self).add(item, weight)
-        if weight is None:
-            weight = self._max_priority
-        self._it_sum[idx] = weight ** self._alpha
-        self._it_min[idx] = weight ** self._alpha
+    def add(self, item: SampleBatch):
+        """Adds experience to the replay buffer.
+
+        Args:
+            item: A sample batch of experience to be added. If this batch contains an entry for the key
+                `SampleBatch.PRIO_WEIGHTS`, it will be used as the corresponding priority weights.
+
+        Returns:
+            None.
+        """
+        for e in item.split():
+            if self._next_idx >= len(self._storage):
+                self._storage.append(e)
+            else:
+                self._storage[self._next_idx] = e
+
+            weight = e.get(SampleBatch.PRIO_WEIGHTS)
+            if weight is None:
+                weight = self._max_priority
+
+            self._it_sum[self._next_idx] = weight ** self._alpha
+            self._it_min[self._next_idx] = weight ** self._alpha
+
+            # Wrap around storage as a circular buffer once we hit maxsize.
+            if self._next_idx >= self._maxsize:
+                self._next_idx = 0
+            else:
+                self._next_idx += 1
 
     def _sample_proportional(self, num_items: int):
         res = []
@@ -114,7 +143,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         batch = SampleBatch.concat_samples([self._storage[i] for i in idxes])
 
-        batch['weights'] = np.array(weights)
+        batch[SampleBatch.PRIO_WEIGHTS] = np.array(weights)
         batch['batch_indices'] = np.array(batch_indexes)
 
         return batch

@@ -6,7 +6,7 @@ import tensorflow as tf
 from tensorflow_probability import distributions as tfd
 
 from interact.experience.sample_batch import SampleBatch
-from interact.math_utils import NormcInitializer
+from interact.utils.math_utils import NormcInitializer
 from interact.policies.base import Policy
 
 layers = tf.keras.layers

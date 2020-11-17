@@ -9,6 +9,7 @@ from interact.agents.dqn.dueling import DuelingAggregator
 from interact.experience.sample_batch import SampleBatch
 from interact.networks import build_network_fn
 from interact.policies.base import Policy
+from interact.utils.math_utils import NormcInitializer
 
 layers = tf.keras.layers
 
@@ -40,15 +41,15 @@ class QNetwork(tf.keras.Model):
         h = base_model.outputs[0]
 
         if dueling:
-            value_stream = layers.Dense(dueling_units, activation='relu')(h)
-            value_stream = layers.Dense(1)(value_stream)
+            value_stream = layers.Dense(dueling_units, activation='relu', kernel_initializer=NormcInitializer())(h)
+            value_stream = layers.Dense(1, kernel_initializer=NormcInitializer(0.01))(value_stream)
 
-            advantage_stream = layers.Dense(dueling_units, activation='relu')(h)
-            advantage_stream = layers.Dense(action_space.n)(advantage_stream)
+            advantage_stream = layers.Dense(dueling_units, activation='relu', kernel_initializer=NormcInitializer())(h)
+            advantage_stream = layers.Dense(action_space.n, kernel_initializer=NormcInitializer(0.01))(advantage_stream)
 
             q_values = DuelingAggregator()([value_stream, advantage_stream])
         else:
-            q_values = layers.Dense(action_space.n)(h)
+            q_values = layers.Dense(action_space.n, kernel_initializer=NormcInitializer(0.01))(h)
 
         super().__init__(inputs=base_model.inputs, outputs=[q_values])
 
