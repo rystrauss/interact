@@ -34,7 +34,7 @@ Some example configuration files can be found in the [`examples`](examples) dire
 
 ## Implemented Algorithms
 
-* [A2C](interact/agents/a2c)
-* [DQN](interact/agents/dqn)
-* [PPO](interact/agents/ppo)
-* [PPG](interact/agents/ppg)
+* [Advantage Actor-Critic](interact/agents/a2c)
+* [Deep Q-Networks](interact/agents/dqn)
+* [Proximal Policy Optimization](interact/agents/ppo)
+* [Phasic Policy Gradients](interact/agents/ppg)
