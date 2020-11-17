@@ -122,6 +122,10 @@ class SampleBatch:
 
         return self
 
+    def split(self) -> Generator["SampleBatch", None, None]:
+        sizes = [len(v) for v in self._data.values()]
+        return self.to_minibatches(sizes[0])
+
     @staticmethod
     def concat_samples(samples: List["SampleBatch"]) -> "SampleBatch":
         merged = {}

@@ -47,3 +47,13 @@ class ClipActionsWrapper(gym.Wrapper):
 
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
+
+
+class ScaleRewardsWrapper(gym.RewardWrapper):
+
+    def __init__(self, env, scale):
+        super().__init__(env)
+        self.scale = scale
+
+    def reward(self, reward):
+        return reward * self.scale

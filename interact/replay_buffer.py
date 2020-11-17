@@ -22,16 +22,17 @@ class ReplayBuffer:
         return len(self._storage)
 
     def add(self, item: SampleBatch):
-        if self._next_idx >= len(self._storage):
-            self._storage.append(item)
-        else:
-            self._storage[self._next_idx] = item
+        for e in item.split():
+            if self._next_idx >= len(self._storage):
+                self._storage.append(e)
+            else:
+                self._storage[self._next_idx] = e
 
-        # Wrap around storage as a circular buffer once we hit maxsize.
-        if self._next_idx >= self._maxsize:
-            self._next_idx = 0
-        else:
-            self._next_idx += 1
+            # Wrap around storage as a circular buffer once we hit maxsize.
+            if self._next_idx >= self._maxsize:
+                self._next_idx = 0
+            else:
+                self._next_idx += 1
 
     def sample(self, num_items: int) -> SampleBatch:
         """Sample a batch of experiences.

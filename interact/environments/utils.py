@@ -2,10 +2,11 @@ import re
 from collections import defaultdict
 from typing import Callable
 
+import gin
 import gym
 
 from interact.environments.atari_wrappers import wrap_atari
-from interact.environments.wrappers import ClipActionsWrapper, MonitorEpisodeWrapper
+from interact.environments.wrappers import ClipActionsWrapper, MonitorEpisodeWrapper, ScaleRewardsWrapper
 
 
 def get_env_type(env_id: str) -> str:
@@ -39,7 +40,8 @@ def get_env_type(env_id: str) -> str:
     return env_type
 
 
-def make_env_fn(env_id: str, seed: int = None) -> Callable[[], gym.Env]:
+@gin.configurable('env', whitelist=['reward_scale'])
+def make_env_fn(env_id: str, seed: int = None, reward_scale: float = None) -> Callable[[], gym.Env]:
     """Returns a function that constructs the given environment when called.
 
     Also ensures that relevant wrappers will be applied to the environment.
@@ -47,6 +49,7 @@ def make_env_fn(env_id: str, seed: int = None) -> Callable[[], gym.Env]:
     Args:
         env_id: The ID of the environment to be created by the returned function.
         seed: An optional seed to seed the returned environment with.
+        reward_scale: Factor by which rewards should be scaled.
 
     Returns:
         A function that returns a new instance of the requested environment when called.
@@ -59,6 +62,9 @@ def make_env_fn(env_id: str, seed: int = None) -> Callable[[], gym.Env]:
             env.seed(seed)
 
         env = MonitorEpisodeWrapper(env)
+
+        if reward_scale is not None:
+            env = ScaleRewardsWrapper(env, reward_scale)
 
         if env_type == 'atari':
             env = wrap_atari(env)
