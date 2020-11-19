@@ -6,8 +6,9 @@ import numpy as np
 import tensorflow as tf
 
 from interact.agents.base import Agent
-from interact.agents.sac.policy import SACPolicy
+from interact.agents.sac.policy import SACPolicy, QFunction
 from interact.agents.utils import register
+from interact.environments.wrappers import NormalizedActionsWrapper
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
 from interact.replay_buffer import ReplayBuffer
@@ -60,11 +61,14 @@ class SACAgent(Agent):
                  batch_size: int = 256,
                  num_workers: int = 1,
                  num_envs_per_worker: int = 1):
-        super().__init__(env_fn)
+        def normalized_env_fn():
+            return NormalizedActionsWrapper(env_fn())
+
+        super().__init__(normalized_env_fn)
 
         env = self.make_env()
 
-        assert isinstance(env.action_space, gym.spaces.Box), 'Only continuous action spaces are supported currently.'
+        self._discrete = isinstance(env.action_space, gym.spaces.Discrete)
 
         if isinstance(target_entropy, str):
             if isinstance(env.action_space, gym.spaces.Discrete):
@@ -85,27 +89,30 @@ class SACAgent(Agent):
 
         self.buffer = ReplayBuffer(buffer_size)
 
+        self.policy = SACPolicy(env.observation_space,
+                                env.action_space,
+                                network)
+
         def policy_fn():
+            if num_workers == 1:
+                return self.policy
+
             return SACPolicy(env.observation_space,
                              env.action_space,
                              network)
 
-        def runner_policy_fn():
-            return SACPolicy(env.observation_space,
-                             env.action_space,
-                             network,
-                             actor_only=True)
-
-        self.policy = policy_fn()
-        self.target_policy = policy_fn()
-
-        self.target_policy.trainable = False
+        self.q1 = QFunction(env.observation_space, env.action_space, network)
+        self.q2 = QFunction(env.observation_space, env.action_space, network)
+        self.target_q1 = QFunction(env.observation_space, env.action_space, network)
+        self.target_q2 = QFunction(env.observation_space, env.action_space, network)
+        self.target_q1.trainable = False
+        self.target_q2.trainable = False
 
         self.pi_optimizer = tf.keras.optimizers.Adam(actor_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(critic_lr)
         self.alpha_optimizer = tf.keras.optimizers.Adam(entropy_lr)
 
-        self.runner = Runner(env_fn, runner_policy_fn, num_envs_per_worker, num_workers)
+        self.runner = Runner(normalized_env_fn, policy_fn, num_envs_per_worker, num_workers)
 
         self.log_alpha = tf.Variable(np.log(initial_alpha), trainable=True, dtype=tf.float32)
 
@@ -119,23 +126,36 @@ class SACAgent(Agent):
 
     @tf.function
     def _update_critic(self, obs, actions, rewards, next_obs, dones):
-        next_actions, next_logpacs, _ = self.policy.pi(next_obs)
+        next_actions, next_logpacs, _, logits = self.policy(next_obs)
 
-        target_q_values_1 = self.target_policy.q1([next_obs, next_actions])
-        target_q_values_2 = self.target_policy.q2([next_obs, next_actions])
-
-        target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
+        if self._discrete:
+            target_q_values_1 = self.target_q1(next_obs)
+            target_q_values_2 = self.target_q2(next_obs)
+            target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
+            target_q_values = tf.reduce_sum(tf.exp(logits) * target_q_values, axis=-1)
+        else:
+            target_q_values_1 = self.target_q1([next_obs, next_actions])
+            target_q_values_2 = self.target_q2([next_obs, next_actions])
+            target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
 
         q_targets = rewards + self.gamma * (1.0 - dones) * (target_q_values - tf.exp(self.log_alpha) * next_logpacs)
 
         with tf.GradientTape() as tape:
-            q_values_1 = self.policy.q1([obs, actions])
-            q_values_2 = self.policy.q2([obs, actions])
+            if self._discrete:
+                q_values_1 = self.q1(obs)
+                q_values_2 = self.q2(obs)
+                num_actions = target_q_values_1.shape[-1]
+                q_values_1 = tf.reduce_sum(q_values_1 * tf.one_hot(next_actions, num_actions), axis=-1)
+                q_values_2 = tf.reduce_sum(q_values_2 * tf.one_hot(next_actions, num_actions), axis=-1)
+            else:
+                q_values_1 = self.q1([obs, actions])
+                q_values_2 = self.q2([obs, actions])
 
             loss = tf.reduce_mean((q_values_1 - q_targets) ** 2) + tf.reduce_mean((q_values_2 - q_targets) ** 2)
 
-        grads = tape.gradient(loss, self.policy.q_variables)
-        self.q_optimizer.apply_gradients(zip(grads, self.policy.q_variables))
+        vars = self.q1.variables + self.q2.variables
+        grads = tape.gradient(loss, vars)
+        self.q_optimizer.apply_gradients(zip(grads, vars))
 
         return {
             'critic_loss': loss
@@ -144,18 +164,40 @@ class SACAgent(Agent):
     @tf.function
     def _update_policy_and_alpha(self, obs):
         with tf.GradientTape() as pi_tape, tf.GradientTape() as alpha_tape:
-            actions, logpacs, entropy = self.policy.pi(obs)
+            actions, logpacs, entropy, logits = self.policy(obs)
 
-            q_values_1 = self.policy.q1([obs, actions])
-            q_values_2 = self.policy.q2([obs, actions])
-            q_values = tf.minimum(q_values_1, q_values_2)
+            if self._discrete:
+                q_values_1 = self.q1(obs)
+                q_values_2 = self.q2(obs)
+                q_values = tf.minimum(q_values_1, q_values_2)
 
-            pi_loss = tf.reduce_mean((tf.stop_gradient(tf.exp(self.log_alpha)) * logpacs - tf.stop_gradient(q_values)))
+                policy = tf.exp(logits)
 
-            alpha_loss = -tf.reduce_mean(self.log_alpha * tf.stop_gradient(logpacs + self.target_entropy))
+                pi_loss = tf.reduce_mean(
+                    tf.reduce_sum(
+                        tf.multiply(
+                            policy,
+                            tf.stop_gradient(tf.exp(self.log_alpha)) * logits - tf.stop_gradient(q_values)),
+                        axis=-1))
 
-        pi_grads = pi_tape.gradient(pi_loss, self.policy.pi.trainable_weights)
-        self.pi_optimizer.apply_gradients(zip(pi_grads, self.policy.pi.trainable_weights))
+                alpha_loss = -tf.reduce_mean(
+                    tf.reduce_sum(
+                        tf.multiply(
+                            policy,
+                            self.log_alpha * tf.stop_gradient(logits + self.target_entropy)),
+                        axis=-1))
+            else:
+                q_values_1 = self.q1([obs, actions])
+                q_values_2 = self.q2([obs, actions])
+                q_values = tf.minimum(q_values_1, q_values_2)
+
+                pi_loss = tf.reduce_mean(
+                    (tf.stop_gradient(tf.exp(self.log_alpha)) * logpacs - tf.stop_gradient(q_values)))
+
+                alpha_loss = -tf.reduce_mean(self.log_alpha * tf.stop_gradient(logpacs + self.target_entropy))
+
+        pi_grads = pi_tape.gradient(pi_loss, self.policy.trainable_weights)
+        self.pi_optimizer.apply_gradients(zip(pi_grads, self.policy.trainable_weights))
 
         alpha_grads = alpha_tape.gradient(alpha_loss, [self.log_alpha])
         self.alpha_optimizer.apply_gradients((zip(alpha_grads, [self.log_alpha])))
@@ -184,9 +226,11 @@ class SACAgent(Agent):
 
             metrics.update(self._update_policy_and_alpha(sample[SampleBatch.OBS]))
 
-            for target_var, q_var in zip(self.target_policy.q_variables, self.policy.q_variables):
+            for target_var, q_var in zip(self.target_q1.variables + self.target_q2.variables,
+                                         self.q1.variables + self.q2.variables):
                 target_var.assign(self.tau * target_var + (1 - self.tau) * q_var)
 
-            self.runner.update_policies(self.policy.pi.get_weights())
+            if self.num_workers != 1:
+                self.runner.update_policies(self.policy.get_weights())
 
         return metrics, ep_infos

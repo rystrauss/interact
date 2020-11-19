@@ -43,6 +43,10 @@ class Worker:
         self.dones = [False for _ in range(self.env.num_envs)]
         self.eps_ids = [uuid.uuid4().int for _ in range(self.env.num_envs)]
 
+    @classmethod
+    def as_remote(cls, **kwargs):
+        return ray.remote(**kwargs)(cls)
+
     def collect(self, num_steps: int = 1, **kwargs) -> Tuple[List[SampleBatch], List[dict]]:
         """Executes the policy in the environment and returns the collected experience.
 
@@ -101,12 +105,6 @@ class Worker:
         self.policy.set_weights(weights)
 
 
-@ray.remote
-class RemoteWorker(Worker):
-    """A remote version of `Worker`."""
-    pass
-
-
 class Runner:
     """Responsible for collecting experience from an environment.
 
@@ -133,7 +131,8 @@ class Runner:
             self._workers = [Worker(env_fn, policy_fn, num_envs_per_worker, seed)]
         else:
             self._workers = [
-                RemoteWorker.remote(env_fn, policy_fn, num_envs_per_worker, seed) for _ in range(num_workers)]
+                Worker.as_remote(num_gpus=0).remote(env_fn, policy_fn, num_envs_per_worker, seed) for _ in
+                range(num_workers)]
 
     def run(self, num_steps: int = 1, **kwargs) -> Tuple[EpisodeBatch, List[dict]]:
         """Executes the policy in the environment and returns the collected experience.
