@@ -135,6 +135,7 @@ class A2CAgent(Agent):
         else:
             lr = self.lr
 
+        # TODO: Allow setting for epsilon parameter, which can make a big difference. (1e-5)
         self.optimizer = tf.keras.optimizers.Adam(lr)
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:

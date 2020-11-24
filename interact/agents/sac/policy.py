@@ -9,6 +9,7 @@ from interact.experience.sample_batch import SampleBatch
 from interact.networks import build_network_fn
 from interact.policies.base import Policy
 from interact.typing import TensorShape
+from interact.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, SMALL_NUMBER
 from interact.utils.math_utils import NormcInitializer
 
 layers = tf.keras.layers
@@ -36,9 +37,12 @@ class SACPolicy(Policy):
             logpacs = pi.log_prob(actions)
         else:
             means, logstds = tf.split(logits, 2, axis=-1)
-            pi = tfd.MultivariateNormalDiag(means, tf.exp(logstds))
+            logstds = tf.clip_by_value(logstds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
+            pi = tfd.Normal(means, tf.exp(logstds))
             actions = pi.sample()
             logpacs = pi.log_prob(actions)
+            logpacs = tf.clip_by_value(logpacs, -100, 100)
+            logpacs = tf.reduce_sum(logpacs, axis=-1)
             #  This formula is mathematically equivalent to
             #  `tf.log1p(-tf.square(tf.tanh(x)))`, however this code is more numerically stable.
             #
@@ -49,8 +53,9 @@ class SACPolicy(Policy):
             #    = 2 * log(2e^-x / (e^-2x + 1))
             #    = 2 * (log(2) - x - log(e^-2x + 1))
             #    = 2 * (log(2) - x - softplus(-2x))
-            logpacs -= tf.reduce_sum(2 * (np.log(2) - actions - tf.nn.softplus(-2 * actions)), axis=1)
+            logpacs -= tf.reduce_sum(2 * (np.log(2) - actions - tf.nn.softplus(-2 * actions)), axis=-1)
             actions = tf.nn.tanh(actions)
+            actions = tf.clip_by_value(actions, -1 + SMALL_NUMBER, 1 - SMALL_NUMBER)
 
         return actions, logpacs, pi.entropy(), logits
 
@@ -91,6 +96,12 @@ class QFunction(layers.Layer):
         self._output = tf.keras.Sequential(
             [layers.Dense(i, kernel_initializer=NormcInitializer()) for i in units] + [
                 layers.Dense(output_units, kernel_initializer=NormcInitializer(0.01))])
+
+        # Do a fake pass through the network to make sure weights are initialized
+        if not self._discrete:
+            self([np.zeros(observation_space.shape)[None, ...], np.zeros(action_space.shape)[None, ...]])
+        else:
+            self(np.zeros(observation_space.shape)[None, ...])
 
     def call(self, inputs, **kwargs):
         if self._discrete:

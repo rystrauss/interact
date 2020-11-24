@@ -71,8 +71,8 @@ class SACAgent(Agent):
         self._discrete = isinstance(env.action_space, gym.spaces.Discrete)
 
         if isinstance(target_entropy, str):
-            if isinstance(env.action_space, gym.spaces.Discrete):
-                target_entropy = -env.action_space.n
+            if self._discrete:
+                target_entropy = 0.98 * np.array(-np.log(1.0 / env.action_space.n), dtype=np.float32)
             else:
                 target_entropy = -np.prod(env.action_space.shape)
 
@@ -108,7 +108,7 @@ class SACAgent(Agent):
         self.target_q1.trainable = False
         self.target_q2.trainable = False
 
-        self.pi_optimizer = tf.keras.optimizers.Adam(actor_lr)
+        self.actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(critic_lr)
         self.alpha_optimizer = tf.keras.optimizers.Adam(entropy_lr)
 
@@ -126,21 +126,24 @@ class SACAgent(Agent):
 
     @tf.function
     def _update_critic(self, obs, actions, rewards, next_obs, dones):
-        next_actions, next_logpacs, _, logits = self.policy(next_obs)
+        vars = self.q1.trainable_variables + self.q2.trainable_variables
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            tape.watch(vars)
+            next_actions, next_logpacs, _, logits = self.policy(next_obs)
 
-        if self._discrete:
-            target_q_values_1 = self.target_q1(next_obs)
-            target_q_values_2 = self.target_q2(next_obs)
-            target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
-            target_q_values = tf.reduce_sum(tf.exp(logits) * target_q_values, axis=-1)
-        else:
-            target_q_values_1 = self.target_q1([next_obs, next_actions])
-            target_q_values_2 = self.target_q2([next_obs, next_actions])
-            target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
+            if self._discrete:
+                target_q_values_1 = self.target_q1(next_obs)
+                target_q_values_2 = self.target_q2(next_obs)
+                target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
+                target_q_values = tf.reduce_sum(tf.exp(logits) * target_q_values, axis=-1)
+            else:
+                target_q_values_1 = self.target_q1([next_obs, next_actions])
+                target_q_values_2 = self.target_q2([next_obs, next_actions])
+                target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
 
-        q_targets = rewards + self.gamma * (1.0 - dones) * (target_q_values - tf.exp(self.log_alpha) * next_logpacs)
+            q_targets = rewards + self.gamma * (1.0 - dones) * (target_q_values - tf.exp(self.log_alpha) * next_logpacs)
+            q_targets = tf.stop_gradient(q_targets)
 
-        with tf.GradientTape() as tape:
             if self._discrete:
                 q_values_1 = self.q1(obs)
                 q_values_2 = self.q2(obs)
@@ -151,9 +154,8 @@ class SACAgent(Agent):
                 q_values_1 = self.q1([obs, actions])
                 q_values_2 = self.q2([obs, actions])
 
-            loss = tf.reduce_mean((q_values_1 - q_targets) ** 2) + tf.reduce_mean((q_values_2 - q_targets) ** 2)
+            loss = 0.5 * (tf.losses.mse(q_values_1, q_targets) + tf.losses.mse(q_values_2, q_targets))
 
-        vars = self.q1.variables + self.q2.variables
         grads = tape.gradient(loss, vars)
         self.q_optimizer.apply_gradients(zip(grads, vars))
 
@@ -163,27 +165,29 @@ class SACAgent(Agent):
 
     @tf.function
     def _update_policy_and_alpha(self, obs):
-        with tf.GradientTape() as pi_tape, tf.GradientTape() as alpha_tape:
+        with tf.GradientTape(watch_accessed_variables=False) as actor_tape, tf.GradientTape(
+                watch_accessed_variables=False) as alpha_tape:
+            actor_tape.watch(self.policy.trainable_variables)
+            alpha_tape.watch([self.log_alpha])
             actions, logpacs, entropy, logits = self.policy(obs)
+            probs = tf.exp(logits)
 
             if self._discrete:
                 q_values_1 = self.q1(obs)
                 q_values_2 = self.q2(obs)
                 q_values = tf.minimum(q_values_1, q_values_2)
 
-                policy = tf.exp(logits)
-
-                pi_loss = tf.reduce_mean(
+                actor_loss = tf.reduce_mean(
                     tf.reduce_sum(
                         tf.multiply(
-                            policy,
+                            probs,
                             tf.stop_gradient(tf.exp(self.log_alpha)) * logits - tf.stop_gradient(q_values)),
                         axis=-1))
 
                 alpha_loss = -tf.reduce_mean(
                     tf.reduce_sum(
                         tf.multiply(
-                            policy,
+                            tf.stop_gradient(probs),
                             self.log_alpha * tf.stop_gradient(logits + self.target_entropy)),
                         axis=-1))
             else:
@@ -191,19 +195,19 @@ class SACAgent(Agent):
                 q_values_2 = self.q2([obs, actions])
                 q_values = tf.minimum(q_values_1, q_values_2)
 
-                pi_loss = tf.reduce_mean(
-                    (tf.stop_gradient(tf.exp(self.log_alpha)) * logpacs - tf.stop_gradient(q_values)))
+                actor_loss = tf.reduce_mean(
+                    (tf.stop_gradient(tf.exp(self.log_alpha)) * logpacs - q_values))
 
                 alpha_loss = -tf.reduce_mean(self.log_alpha * tf.stop_gradient(logpacs + self.target_entropy))
 
-        pi_grads = pi_tape.gradient(pi_loss, self.policy.trainable_weights)
-        self.pi_optimizer.apply_gradients(zip(pi_grads, self.policy.trainable_weights))
+        actor_grads = actor_tape.gradient(actor_loss, self.policy.trainable_weights)
+        self.actor_optimizer.apply_gradients(zip(actor_grads, self.policy.trainable_weights))
 
         alpha_grads = alpha_tape.gradient(alpha_loss, [self.log_alpha])
         self.alpha_optimizer.apply_gradients((zip(alpha_grads, [self.log_alpha])))
 
         return {
-            'policy_loss': pi_loss,
+            'actor_loss': actor_loss,
             'policy_entropy': tf.reduce_mean(entropy),
             'alpha_loss': alpha_loss,
             'alpha': tf.exp(self.log_alpha)
