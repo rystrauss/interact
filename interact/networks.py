@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Iterable
 
 import gin
 import tensorflow as tf
@@ -41,7 +41,7 @@ def build_network_fn(network: str, input_shape: TensorShape) -> Callable[[], tf.
 
 @gin.configurable(name_or_fn='mlp', blacklist=['input_shape'])
 @register('mlp')
-def build_mlp(input_shape: TensorShape, units: TensorShape = (64, 64), activation: str = 'relu') -> tf.keras.Model:
+def build_mlp(input_shape: TensorShape, units: Iterable[int] = (64, 64), activation: str = 'relu') -> tf.keras.Model:
     """Build a fully-connected feed-forward network, or multilayer-perceptron.
 
     Args:
@@ -66,7 +66,7 @@ def build_mlp(input_shape: TensorShape, units: TensorShape = (64, 64), activatio
 @register('cnn')
 def build_nature_cnn(input_shape: TensorShape,
                      scale_inputs: bool = True,
-                     units: TensorShape = (512,)) -> tf.keras.Model:
+                     units: Iterable[int] = (512,)) -> tf.keras.Model:
     """Builds a convolutional neural network.
 
     Defaults to the network described in the DQN Nature article.

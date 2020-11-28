@@ -1,4 +1,4 @@
-from typing import Union, Dict
+from typing import Union, Dict, Iterable
 
 import gym
 import numpy as np
@@ -8,7 +8,6 @@ from tensorflow_probability import distributions as tfd
 from interact.experience.sample_batch import SampleBatch
 from interact.networks import build_network_fn
 from interact.policies.base import Policy
-from interact.typing import TensorShape
 from interact.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, SMALL_NUMBER
 from interact.utils.math_utils import NormcInitializer
 
@@ -76,7 +75,7 @@ class QFunction(layers.Layer):
                  observation_space: gym.Space,
                  action_space: gym.Space,
                  network: str,
-                 units: TensorShape = tuple(),
+                 units: Iterable[int] = tuple(),
                  **kwargs):
         super().__init__(**kwargs)
 
@@ -118,3 +117,20 @@ class QFunction(layers.Layer):
             q = tf.squeeze(self._output(latent), axis=-1)
 
         return q
+
+
+class TwinQNetwork(layers.Layer):
+
+    def __init__(self,
+                 observation_space: gym.Space,
+                 action_space: gym.Space,
+                 network: str,
+                 units: Iterable[int] = tuple(),
+                 **kwargs):
+        super().__init__(**kwargs)
+
+        self.q1 = QFunction(observation_space, action_space, network, units)
+        self.q2 = QFunction(observation_space, action_space, network, units)
+
+    def call(self, inputs, **kwargs):
+        return self.q1(inputs), self.q2(inputs)
