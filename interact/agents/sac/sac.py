@@ -16,8 +16,8 @@ from interact.replay_buffer import ReplayBuffer
 from interact.typing import TensorType
 
 
-@gin.configurable('sac', blacklist=['env_fn'])
-@register('sac')
+@gin.configurable("sac", blacklist=["env_fn"])
+@register("sac")
 class SACAgent(Agent):
     """The Soft Actor-Critic algorithm.
 
@@ -46,23 +46,25 @@ class SACAgent(Agent):
         num_envs_per_worker: The number of synchronous environments to be executed in each worker.
     """
 
-    def __init__(self,
-                 env_fn: Callable[[], gym.Env],
-                 network: str = 'mlp',
-                 actor_lr: float = 3e-4,
-                 critic_lr: float = 3e-4,
-                 entropy_lr: float = 3e-4,
-                 learning_starts: int = 1500,
-                 tau: float = 5e-3,
-                 initial_alpha: float = 1.0,
-                 learn_alpha: bool = True,
-                 target_entropy: Union[str, float] = 'auto',
-                 gamma: float = 0.99,
-                 buffer_size: int = 50000,
-                 train_freq: int = 1,
-                 batch_size: int = 256,
-                 num_workers: int = 1,
-                 num_envs_per_worker: int = 1):
+    def __init__(
+        self,
+        env_fn: Callable[[], gym.Env],
+        network: str = "mlp",
+        actor_lr: float = 3e-4,
+        critic_lr: float = 3e-4,
+        entropy_lr: float = 3e-4,
+        learning_starts: int = 1500,
+        tau: float = 5e-3,
+        initial_alpha: float = 1.0,
+        learn_alpha: bool = True,
+        target_entropy: Union[str, float] = "auto",
+        gamma: float = 0.99,
+        buffer_size: int = 50000,
+        train_freq: int = 1,
+        batch_size: int = 256,
+        num_workers: int = 1,
+        num_envs_per_worker: int = 1,
+    ):
         def normalized_env_fn():
             return NormalizedActionsWrapper(env_fn())
 
@@ -74,7 +76,9 @@ class SACAgent(Agent):
 
         if isinstance(target_entropy, str):
             if self._discrete:
-                target_entropy = 0.98 * np.array(-np.log(1.0 / env.action_space.n), dtype=np.float32)
+                target_entropy = 0.98 * np.array(
+                    -np.log(1.0 / env.action_space.n), dtype=np.float32
+                )
             else:
                 target_entropy = -np.prod(env.action_space.shape)
 
@@ -92,29 +96,33 @@ class SACAgent(Agent):
 
         self.buffer = ReplayBuffer(buffer_size)
 
-        self.policy = SACPolicy(env.observation_space,
-                                env.action_space,
-                                network)
+        self.policy = SACPolicy(env.observation_space, env.action_space, network)
 
         def policy_fn():
             if num_workers == 1:
                 return self.policy
 
-            return SACPolicy(env.observation_space,
-                             env.action_space,
-                             network)
+            return SACPolicy(env.observation_space, env.action_space, network)
 
         self.q_network = TwinQNetwork(env.observation_space, env.action_space, network)
-        self.target_q_network = TwinQNetwork(env.observation_space, env.action_space, network)
+        self.target_q_network = TwinQNetwork(
+            env.observation_space, env.action_space, network
+        )
         self.target_q_network.trainable = False
 
         self.actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
         self.q_optimizer = tf.keras.optimizers.Adam(critic_lr)
-        self.alpha_optimizer = None if not learn_alpha else tf.keras.optimizers.Adam(entropy_lr)
+        self.alpha_optimizer = (
+            None if not learn_alpha else tf.keras.optimizers.Adam(entropy_lr)
+        )
 
-        self.runner = Runner(normalized_env_fn, policy_fn, num_envs_per_worker, num_workers)
+        self.runner = Runner(
+            normalized_env_fn, policy_fn, num_envs_per_worker, num_workers
+        )
 
-        self.log_alpha = tf.Variable(np.log(initial_alpha), trainable=learn_alpha, dtype=tf.float32)
+        self.log_alpha = tf.Variable(
+            np.log(initial_alpha), trainable=learn_alpha, dtype=tf.float32
+        )
         self.alpha = tfp.util.DeferredTensor(self.log_alpha, tf.exp)
 
     @property
@@ -135,36 +143,47 @@ class SACAgent(Agent):
             if self._discrete:
                 target_q_values_1, target_q_values_2 = self.target_q_network(next_obs)
                 target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
-                target_q_values = tf.reduce_sum(tf.exp(logits) * target_q_values, axis=-1)
+                target_q_values = tf.reduce_sum(
+                    tf.exp(logits) * target_q_values, axis=-1
+                )
             else:
-                target_q_values_1, target_q_values_2 = self.target_q_network([next_obs, next_actions])
+                target_q_values_1, target_q_values_2 = self.target_q_network(
+                    [next_obs, next_actions]
+                )
                 target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
 
-            q_targets = rewards + self.gamma * (1.0 - dones) * (target_q_values - self.alpha * next_logpacs)
+            q_targets = rewards + self.gamma * (1.0 - dones) * (
+                target_q_values - self.alpha * next_logpacs
+            )
             q_targets = tf.stop_gradient(q_targets)
 
             if self._discrete:
                 q_values_1, q_values_2 = self.q_network(obs)
                 num_actions = q_values_1.shape[-1]
-                q_values_1 = tf.reduce_sum(q_values_1 * tf.one_hot(next_actions, num_actions), axis=-1)
-                q_values_2 = tf.reduce_sum(q_values_2 * tf.one_hot(next_actions, num_actions), axis=-1)
+                q_values_1 = tf.reduce_sum(
+                    q_values_1 * tf.one_hot(next_actions, num_actions), axis=-1
+                )
+                q_values_2 = tf.reduce_sum(
+                    q_values_2 * tf.one_hot(next_actions, num_actions), axis=-1
+                )
             else:
                 q_values_1, q_values_2 = self.q_network([obs, actions])
 
-            loss = tf.losses.mse(q_values_1, q_targets) + tf.losses.mse(q_values_2, q_targets)
+            loss = tf.losses.mse(q_values_1, q_targets) + tf.losses.mse(
+                q_values_2, q_targets
+            )
             loss = 0.5 * tf.nn.compute_average_loss(loss)
 
         grads = tape.gradient(loss, vars)
         self.q_optimizer.apply_gradients(zip(grads, vars))
 
-        return {
-            'critic_loss': loss
-        }
+        return {"critic_loss": loss}
 
     @tf.function
     def _update_policy_and_alpha(self, obs):
-        with tf.GradientTape(watch_accessed_variables=False) as actor_tape, tf.GradientTape(
-                watch_accessed_variables=False) as alpha_tape:
+        with tf.GradientTape(
+            watch_accessed_variables=False
+        ) as actor_tape, tf.GradientTape(watch_accessed_variables=False) as alpha_tape:
             actor_tape.watch(self.policy.trainable_variables)
             alpha_tape.watch([self.log_alpha])
             actions, logpacs, entropy, logits = self.policy(obs)
@@ -178,16 +197,24 @@ class SACAgent(Agent):
                     tf.reduce_sum(
                         tf.multiply(
                             probs,
-                            tf.stop_gradient(self.alpha) * logits - tf.stop_gradient(q_values)),
-                        axis=-1))
+                            tf.stop_gradient(self.alpha) * logits
+                            - tf.stop_gradient(q_values),
+                        ),
+                        axis=-1,
+                    )
+                )
 
                 if self.learn_alpha:
                     alpha_loss = -tf.reduce_mean(
                         tf.reduce_sum(
                             tf.multiply(
                                 tf.stop_gradient(probs),
-                                self.log_alpha * tf.stop_gradient(logits + self.target_entropy)),
-                            axis=-1))
+                                self.log_alpha
+                                * tf.stop_gradient(logits + self.target_entropy),
+                            ),
+                            axis=-1,
+                        )
+                    )
                 else:
                     alpha_loss = 0
             else:
@@ -198,22 +225,25 @@ class SACAgent(Agent):
 
                 if self.learn_alpha:
                     alpha_loss = -tf.nn.compute_average_loss(
-                        self.log_alpha * tf.stop_gradient(logpacs + self.target_entropy))
+                        self.log_alpha * tf.stop_gradient(logpacs + self.target_entropy)
+                    )
                 else:
                     alpha_loss = 0
 
         actor_grads = actor_tape.gradient(actor_loss, self.policy.trainable_weights)
-        self.actor_optimizer.apply_gradients(zip(actor_grads, self.policy.trainable_weights))
+        self.actor_optimizer.apply_gradients(
+            zip(actor_grads, self.policy.trainable_weights)
+        )
 
         if self.learn_alpha:
             alpha_grads = alpha_tape.gradient(alpha_loss, [self.log_alpha])
             self.alpha_optimizer.apply_gradients((zip(alpha_grads, [self.log_alpha])))
 
         return {
-            'actor_loss': actor_loss,
-            'policy_entropy': tf.reduce_mean(entropy),
-            'alpha_loss': alpha_loss,
-            'alpha': self.alpha
+            "actor_loss": actor_loss,
+            "policy_entropy": tf.reduce_mean(entropy),
+            "alpha_loss": alpha_loss,
+            "alpha": self.alpha,
         }
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
@@ -222,18 +252,27 @@ class SACAgent(Agent):
         self.buffer.add(episodes.to_sample_batch())
 
         metrics = {}
-        if update * self.timesteps_per_iteration > self.learning_starts and update % self.train_freq == 0:
+        if (
+            update * self.timesteps_per_iteration > self.learning_starts
+            and update % self.train_freq == 0
+        ):
             sample = self.buffer.sample(self.batch_size)
 
-            metrics.update(self._update_critic(sample[SampleBatch.OBS],
-                                               sample[SampleBatch.ACTIONS],
-                                               sample[SampleBatch.REWARDS],
-                                               sample[SampleBatch.NEXT_OBS],
-                                               sample[SampleBatch.DONES]))
+            metrics.update(
+                self._update_critic(
+                    sample[SampleBatch.OBS],
+                    sample[SampleBatch.ACTIONS],
+                    sample[SampleBatch.REWARDS],
+                    sample[SampleBatch.NEXT_OBS],
+                    sample[SampleBatch.DONES],
+                )
+            )
 
             metrics.update(self._update_policy_and_alpha(sample[SampleBatch.OBS]))
 
-            for target_var, q_var in zip(self.target_q_network.variables, self.q_network.variables):
+            for target_var, q_var in zip(
+                self.target_q_network.variables, self.q_network.variables
+            ):
                 target_var.assign(self.tau * target_var + (1 - self.tau) * q_var)
 
             if self.num_workers != 1:

@@ -15,10 +15,12 @@ class EpisodeBatch:
     """
 
     def __init__(self, **kwargs):
-        if not kwargs.get('internal'):
-            raise ValueError('This class is only meant to be directly instantiated internally.')
+        if not kwargs.get("internal"):
+            raise ValueError(
+                "This class is only meant to be directly instantiated internally."
+            )
 
-        self._episodes = kwargs.get('episodes')
+        self._episodes = kwargs.get("episodes")
 
     def __len__(self):
         return len(self._episodes)

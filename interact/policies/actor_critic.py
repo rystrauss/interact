@@ -26,18 +26,20 @@ class ActorCriticPolicy(Policy):
             with the policy.
     """
 
-    def __init__(self,
-                 observation_space: gym.Space,
-                 action_space: gym.Space,
-                 base_model_fn: Callable[[], layers.Layer],
-                 value_network: str = 'copy'):
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        base_model_fn: Callable[[], layers.Layer],
+        value_network: str = "copy",
+    ):
         super().__init__(observation_space, action_space)
 
-        if value_network == 'copy':
+        if value_network == "copy":
             self._policy_base = base_model_fn()
             self._value_base = base_model_fn()
             self._shared_base = None
-        elif value_network == 'shared':
+        elif value_network == "shared":
             self._policy_base = None
             self._value_base = None
             self._shared_base = base_model_fn()
@@ -48,9 +50,15 @@ class ActorCriticPolicy(Policy):
             self._policy_fn = layers.Dense(action_space.n)
             self.is_discrete = True
         else:
-            self._policy_fn = layers.Dense(action_space.shape[0], kernel_initializer=NormcInitializer(0.01))
-            self._policy_logstds = self.add_weight('policy_logstds', shape=(action_space.shape[0],), trainable=True,
-                                                   initializer=tf.keras.initializers.Zeros())
+            self._policy_fn = layers.Dense(
+                action_space.shape[0], kernel_initializer=NormcInitializer(0.01)
+            )
+            self._policy_logstds = self.add_weight(
+                "policy_logstds",
+                shape=(action_space.shape[0],),
+                trainable=True,
+                initializer=tf.keras.initializers.Zeros(),
+            )
             self.is_discrete = False
 
         self._value_fn = layers.Dense(1, kernel_initializer=NormcInitializer(0.01))
@@ -76,10 +84,9 @@ class ActorCriticPolicy(Policy):
         return pi, value_preds
 
     @tf.function
-    def _step(self,
-              obs: np.ndarray,
-              states: Union[np.ndarray, None] = None,
-              **kwargs) -> Dict[str, Union[float, np.ndarray]]:
+    def _step(
+        self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
+    ) -> Dict[str, Union[float, np.ndarray]]:
         pi, value_preds = self.call(obs)
 
         actions = pi.sample()
@@ -88,7 +95,7 @@ class ActorCriticPolicy(Policy):
         return {
             SampleBatch.ACTIONS: actions,
             SampleBatch.ACTION_LOGP: action_logp,
-            SampleBatch.VALUE_PREDS: value_preds
+            SampleBatch.VALUE_PREDS: value_preds,
         }
 
     @tf.function

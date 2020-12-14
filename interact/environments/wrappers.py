@@ -28,8 +28,8 @@ class MonitorEpisodeWrapper(gym.Wrapper):
         if done:
             ep_rew = sum(self.rewards)
             eplen = len(self.rewards)
-            ep_info = {'reward': round(ep_rew, 6), 'length': eplen}
-            info['episode'] = ep_info
+            ep_info = {"reward": round(ep_rew, 6), "length": eplen}
+            info["episode"] = ep_info
 
         return observation, reward, done, info
 
@@ -61,13 +61,12 @@ class ScaleRewardsWrapper(gym.RewardWrapper):
 
 
 class NormalizedActionsWrapper(gym.ActionWrapper):
-
     def action(self, action):
         if not isinstance(self.action_space, gym.spaces.Box):
             return action
 
         lb, ub = self.action_space.low, self.action_space.high
-        scaled_action = lb + (action + 1.) * 0.5 * (ub - lb)
+        scaled_action = lb + (action + 1.0) * 0.5 * (ub - lb)
         scaled_action = np.clip(scaled_action, lb, ub)
         return scaled_action
 
@@ -77,5 +76,5 @@ class NormalizedActionsWrapper(gym.ActionWrapper):
 
         lb, ub = self.action_space.low, self.action_space.high
         scaled_action = (action - lb) * 2 / (ub - lb) - 1
-        scaled_action = np.clip(scaled_action, -1., 1.)
+        scaled_action = np.clip(scaled_action, -1.0, 1.0)
         return scaled_action

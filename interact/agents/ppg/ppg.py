@@ -19,8 +19,8 @@ from interact.schedules import LinearDecay
 from interact.typing import TensorType
 
 
-@gin.configurable(name_or_fn='ppg', blacklist=['env_fn'])
-@register('ppg')
+@gin.configurable(name_or_fn="ppg", blacklist=["env_fn"])
+@register("ppg")
 class PPGAgent(Agent):
     """The Phasic Policy Gradients algorithm.
 
@@ -54,35 +54,43 @@ class PPGAgent(Agent):
         nminibatches_aux: Number of training minibatches per auxiliary epoch.
     """
 
-    def __init__(self,
-                 env_fn: Callable[[], gym.Env],
-                 policy_network: str = 'mlp',
-                 num_envs_per_worker: int = 1,
-                 num_workers: int = 8,
-                 use_critic: bool = True,
-                 use_gae: bool = True,
-                 lam: float = 0.95,
-                 gamma: float = 0.99,
-                 nsteps: int = 128,
-                 ent_coef: float = 0.01,
-                 vf_coef: float = 0.5,
-                 vf_clip: float = 10.0,
-                 lr: float = 2.5e-4,
-                 lr_schedule: str = 'constant',
-                 max_grad_norm: float = 0.5,
-                 nminibatches: int = 4,
-                 cliprange: float = 0.2,
-                 cliprange_schedule: str = 'constant',
-                 policy_iterations: int = 32,
-                 policy_epochs: int = 1,
-                 value_epochs: int = 1,
-                 auxiliary_epochs: int = 6,
-                 bc_coef: float = 1.0,
-                 nminibatches_aux: int = 16):
+    def __init__(
+        self,
+        env_fn: Callable[[], gym.Env],
+        policy_network: str = "mlp",
+        num_envs_per_worker: int = 1,
+        num_workers: int = 8,
+        use_critic: bool = True,
+        use_gae: bool = True,
+        lam: float = 0.95,
+        gamma: float = 0.99,
+        nsteps: int = 128,
+        ent_coef: float = 0.01,
+        vf_coef: float = 0.5,
+        vf_clip: float = 10.0,
+        lr: float = 2.5e-4,
+        lr_schedule: str = "constant",
+        max_grad_norm: float = 0.5,
+        nminibatches: int = 4,
+        cliprange: float = 0.2,
+        cliprange_schedule: str = "constant",
+        policy_iterations: int = 32,
+        policy_epochs: int = 1,
+        value_epochs: int = 1,
+        auxiliary_epochs: int = 6,
+        bc_coef: float = 1.0,
+        nminibatches_aux: int = 16,
+    ):
         super().__init__(env_fn)
 
-        assert lr_schedule in {'linear', 'constant'}, 'lr_schedule must be "linear" or "constant"'
-        assert cliprange_schedule in {'linear', 'constant'}, 'cliprange_schedule must be "linear" or "constant"'
+        assert lr_schedule in {
+            "linear",
+            "constant",
+        }, 'lr_schedule must be "linear" or "constant"'
+        assert cliprange_schedule in {
+            "linear",
+            "constant",
+        }, 'cliprange_schedule must be "linear" or "constant"'
 
         env = self.make_env()
 
@@ -92,7 +100,12 @@ class PPGAgent(Agent):
             return PPGPolicy(env.observation_space, env.action_space, network_fn)
 
         self.policy = policy_fn()
-        self.runner = Runner(env_fn, policy_fn, num_envs_per_worker=num_envs_per_worker, num_workers=num_workers)
+        self.runner = Runner(
+            env_fn,
+            policy_fn,
+            num_envs_per_worker=num_envs_per_worker,
+            num_workers=num_workers,
+        )
 
         self.num_envs_per_worker = num_envs_per_worker
         self.num_workers = num_workers
@@ -123,7 +136,12 @@ class PPGAgent(Agent):
 
     @property
     def timesteps_per_iteration(self) -> int:
-        return self.nsteps * self.num_envs_per_worker * self.num_workers * self.policy_iterations
+        return (
+            self.nsteps
+            * self.num_envs_per_worker
+            * self.num_workers
+            * self.policy_iterations
+        )
 
     @tf.function
     def _train_policy(self, obs, actions, advantages, old_neglogpacs, cliprange):
@@ -136,7 +154,9 @@ class PPGAgent(Agent):
             # Define the policy surrogate loss as per PPO
             ratio = tf.exp(old_neglogpacs - neglogpacs)
             pg_loss_unclipped = -advantages * ratio
-            pg_loss_clipped = -advantages * tf.clip_by_value(ratio, 1 - cliprange, 1 + cliprange)
+            pg_loss_clipped = -advantages * tf.clip_by_value(
+                ratio, 1 - cliprange, 1 + cliprange
+            )
             policy_loss = tf.reduce_mean(tf.maximum(pg_loss_unclipped, pg_loss_clipped))
             loss = policy_loss - entropy * self.ent_coef
 
@@ -168,7 +188,9 @@ class PPGAgent(Agent):
         return value_loss
 
     @tf.function
-    def _train_policy_and_value(self, obs, actions, advantages, returns, old_neglogpacs, cliprange):
+    def _train_policy_and_value(
+        self, obs, actions, advantages, returns, old_neglogpacs, cliprange
+    ):
         with tf.GradientTape() as tape:
             # Compute the policy for the given observations
             pi = self.policy(obs)
@@ -178,7 +200,9 @@ class PPGAgent(Agent):
             # Define the policy surrogate loss as per PPO
             ratio = tf.exp(old_neglogpacs - neglogpacs)
             pg_loss_unclipped = -advantages * ratio
-            pg_loss_clipped = -advantages * tf.clip_by_value(ratio, 1 - cliprange, 1 + cliprange)
+            pg_loss_clipped = -advantages * tf.clip_by_value(
+                ratio, 1 - cliprange, 1 + cliprange
+            )
             policy_loss = tf.reduce_mean(tf.maximum(pg_loss_unclipped, pg_loss_clipped))
 
             value_preds = self.policy.value(obs)
@@ -192,7 +216,9 @@ class PPGAgent(Agent):
         if self.max_grad_norm is not None:
             grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
         # Apply the gradient update
-        self.policy_optimizer.apply_gradients(zip(grads, self.policy.policy_and_value_weights))
+        self.policy_optimizer.apply_gradients(
+            zip(grads, self.policy.policy_and_value_weights)
+        )
 
         return policy_loss, entropy, value_loss
 
@@ -241,7 +267,11 @@ class PPGAgent(Agent):
             episodes, ep_infos = self.runner.run(self.nsteps)
             ep_info_buffer.extend(ep_infos)
 
-            episodes.for_each(AdvantagePostprocessor(self.policy, self.gamma, self.lam, self.use_gae, self.use_critic))
+            episodes.for_each(
+                AdvantagePostprocessor(
+                    self.policy, self.gamma, self.lam, self.use_gae, self.use_critic
+                )
+            )
             experience_buffer.append(episodes)
             batch = episodes.to_sample_batch()
 
@@ -255,17 +285,19 @@ class PPGAgent(Agent):
                             minibatch[SampleBatch.ADVANTAGES],
                             minibatch[SampleBatch.RETURNS],
                             -minibatch[SampleBatch.ACTION_LOGP],
-                            curr_cliprange)
+                            curr_cliprange,
+                        )
 
                         value_explained_variance = explained_variance(
                             tf.constant(minibatch[SampleBatch.RETURNS]),
-                            tf.constant(minibatch[SampleBatch.VALUE_PREDS]))
+                            tf.constant(minibatch[SampleBatch.VALUE_PREDS]),
+                        )
 
                         metrics = {
-                            'policy_loss': policy_loss,
-                            'policy_entropy': entropy,
-                            'value_loss': value_loss,
-                            'value_explained_variance': value_explained_variance
+                            "policy_loss": policy_loss,
+                            "policy_entropy": entropy,
+                            "value_loss": value_loss,
+                            "value_explained_variance": value_explained_variance,
                         }
 
                         for k, v in metrics.items():
@@ -282,11 +314,12 @@ class PPGAgent(Agent):
                             minibatch[SampleBatch.ACTIONS],
                             minibatch[SampleBatch.ADVANTAGES],
                             -minibatch[SampleBatch.ACTION_LOGP],
-                            curr_cliprange)
+                            curr_cliprange,
+                        )
 
                         metrics = {
-                            'policy_loss': policy_loss,
-                            'policy_entropy': entropy
+                            "policy_loss": policy_loss,
+                            "policy_entropy": entropy,
                         }
 
                         for k, v in metrics.items():
@@ -299,15 +332,16 @@ class PPGAgent(Agent):
                     batch.shuffle()
                     for minibatch in batch.to_minibatches(self.nminibatches):
                         value_loss = self._train_value(
-                            minibatch[SampleBatch.OBS],
-                            minibatch[SampleBatch.RETURNS])
+                            minibatch[SampleBatch.OBS], minibatch[SampleBatch.RETURNS]
+                        )
 
                         value_explained_variance = explained_variance(
                             tf.constant(minibatch[SampleBatch.RETURNS]),
-                            tf.constant(minibatch[SampleBatch.VALUE_PREDS]))
+                            tf.constant(minibatch[SampleBatch.VALUE_PREDS]),
+                        )
                         metrics = {
-                            'value_loss': value_loss,
-                            'value_explained_variance': value_explained_variance
+                            "value_loss": value_loss,
+                            "value_explained_variance": value_explained_variance,
                         }
 
                         for k, v in metrics.items():
@@ -331,9 +365,11 @@ class PPGAgent(Agent):
         for _ in range(self.auxiliary_epochs):
             batch.shuffle()
             for minibatch in batch.to_minibatches(self.nminibatches_aux):
-                self._train_auxiliary(minibatch[SampleBatch.OBS],
-                                      minibatch[SampleBatch.RETURNS],
-                                      minibatch[SampleBatch.POLICY_LOGITS])
+                self._train_auxiliary(
+                    minibatch[SampleBatch.OBS],
+                    minibatch[SampleBatch.RETURNS],
+                    minibatch[SampleBatch.POLICY_LOGITS],
+                )
 
     @tf.function
     def act(self, obs: TensorType, state: List[TensorType] = None) -> TensorType:
@@ -341,8 +377,11 @@ class PPGAgent(Agent):
         return pi.mode()
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
-        curr_cliprange = self.cliprange if self.cliprange_schedule == 'constant' else self.cliprange(
-            update * self.timesteps_per_iteration)
+        curr_cliprange = (
+            self.cliprange
+            if self.cliprange_schedule == "constant"
+            else self.cliprange(update * self.timesteps_per_iteration)
+        )
 
         metrics, episodes, ep_infos = self._policy_phase(curr_cliprange)
 
@@ -353,12 +392,12 @@ class PPGAgent(Agent):
         return metrics, ep_infos
 
     def setup(self, total_timesteps: int):
-        if self.lr_schedule == 'linear':
+        if self.lr_schedule == "linear":
             lr = LinearDecay(self.lr, total_timesteps // self.timesteps_per_iteration)
         else:
             lr = self.lr
 
-        if self.cliprange_schedule == 'linear':
+        if self.cliprange_schedule == "linear":
             self.cliprange = LinearDecay(self.cliprange, total_timesteps)
 
         self.policy_optimizer = tf.optimizers.Adam(learning_rate=lr)

@@ -15,8 +15,8 @@ from interact.policies.actor_critic import ActorCriticPolicy
 from interact.schedules import LinearDecay
 
 
-@gin.configurable(name_or_fn='a2c', blacklist=['env_fn'])
-@register('a2c')
+@gin.configurable(name_or_fn="a2c", blacklist=["env_fn"])
+@register("a2c")
 class A2CAgent(Agent):
     """The advantage actor-critic algorithm.
 
@@ -43,35 +43,47 @@ class A2CAgent(Agent):
         max_grad_norm: The maximum value for the gradient clipping.
     """
 
-    def __init__(self,
-                 env_fn: Callable[[], gym.Env],
-                 policy_network: str = 'mlp',
-                 value_network: str = 'copy',
-                 num_envs_per_worker: int = 1,
-                 num_workers: int = 8,
-                 use_critic: bool = True,
-                 use_gae: bool = False,
-                 lam: float = 1.0,
-                 gamma: float = 0.99,
-                 nsteps: int = 5,
-                 ent_coef: float = 0.01,
-                 vf_coef: float = 0.25,
-                 lr: float = 0.0001,
-                 lr_schedule: str = 'constant',
-                 max_grad_norm: float = 0.5):
+    def __init__(
+        self,
+        env_fn: Callable[[], gym.Env],
+        policy_network: str = "mlp",
+        value_network: str = "copy",
+        num_envs_per_worker: int = 1,
+        num_workers: int = 8,
+        use_critic: bool = True,
+        use_gae: bool = False,
+        lam: float = 1.0,
+        gamma: float = 0.99,
+        nsteps: int = 5,
+        ent_coef: float = 0.01,
+        vf_coef: float = 0.25,
+        lr: float = 0.0001,
+        lr_schedule: str = "constant",
+        max_grad_norm: float = 0.5,
+    ):
         super().__init__(env_fn)
 
-        assert lr_schedule in {'linear', 'constant'}, 'lr_schedule must be "linear" or "constant"'
+        assert lr_schedule in {
+            "linear",
+            "constant",
+        }, 'lr_schedule must be "linear" or "constant"'
 
         env = self.make_env()
 
         network_fn = build_network_fn(policy_network, env.observation_space.shape)
 
         def policy_fn():
-            return ActorCriticPolicy(env.observation_space, env.action_space, network_fn, value_network)
+            return ActorCriticPolicy(
+                env.observation_space, env.action_space, network_fn, value_network
+            )
 
         self.policy = policy_fn()
-        self.runner = Runner(env_fn, policy_fn, num_envs_per_worker=num_envs_per_worker, num_workers=num_workers)
+        self.runner = Runner(
+            env_fn,
+            policy_fn,
+            num_envs_per_worker=num_envs_per_worker,
+            num_workers=num_workers,
+        )
 
         self.num_envs_per_worker = num_envs_per_worker
         self.num_workers = num_workers
@@ -118,10 +130,10 @@ class A2CAgent(Agent):
         value_explained_variance = explained_variance(returns, value_preds)
 
         return {
-            'policy_loss': policy_loss,
-            'value_loss': value_loss,
-            'policy_entropy': entropy,
-            'value_explained_variance': value_explained_variance
+            "policy_loss": policy_loss,
+            "value_loss": value_loss,
+            "policy_entropy": entropy,
+            "value_explained_variance": value_explained_variance,
         }
 
     @tf.function
@@ -130,7 +142,7 @@ class A2CAgent(Agent):
         return pi.mode()
 
     def setup(self, total_timesteps):
-        if self.lr_schedule == 'linear':
+        if self.lr_schedule == "linear":
             lr = LinearDecay(self.lr, total_timesteps // self.timesteps_per_iteration)
         else:
             lr = self.lr
@@ -146,15 +158,21 @@ class A2CAgent(Agent):
         episodes, ep_infos = self.runner.run(self.nsteps)
 
         # Compute advantages for the collected experience.
-        episodes.for_each(AdvantagePostprocessor(self.policy, self.gamma, self.lam, self.use_gae, self.use_critic))
+        episodes.for_each(
+            AdvantagePostprocessor(
+                self.policy, self.gamma, self.lam, self.use_gae, self.use_critic
+            )
+        )
 
         # Aggregate the collected experience so that a gradient update can be performed.
         batch = episodes.to_sample_batch().shuffle()
 
         # Update the policy and value function based on the new experience.
-        metrics = self._update(batch[SampleBatch.OBS],
-                               batch[SampleBatch.ACTIONS],
-                               batch[SampleBatch.ADVANTAGES],
-                               batch[SampleBatch.RETURNS])
+        metrics = self._update(
+            batch[SampleBatch.OBS],
+            batch[SampleBatch.ACTIONS],
+            batch[SampleBatch.ADVANTAGES],
+            batch[SampleBatch.RETURNS],
+        )
 
         return metrics, ep_infos

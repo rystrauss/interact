@@ -10,7 +10,7 @@ from interact.tests.mock_policy import MockPolicy
 @pytest.fixture
 def cartpole_episode_batch():
     np.random.seed(91)
-    env_fn = make_env_fn('CartPole-v1')
+    env_fn = make_env_fn("CartPole-v1")
     env = env_fn()
     policy_fn = lambda: MockPolicy(env.observation_space, env.action_space)
 

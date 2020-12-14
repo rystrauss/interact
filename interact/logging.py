@@ -9,11 +9,12 @@ class Colors(Enum):
 
     These colors should be passed to `Logger.log`.
     """
-    PINK = '\033[95m'
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
+
+    PINK = "\033[95m"
+    BLUE = "\033[94m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
 
 
 class Logger:
@@ -30,7 +31,7 @@ class Logger:
         self._dir = os.path.expanduser(dir)
 
         if os.path.exists(self._dir):
-            raise ValueError('Logger directory already exists.')
+            raise ValueError("Logger directory already exists.")
         os.makedirs(self._dir, exist_ok=True)
 
         self._summary_writer = None
@@ -44,7 +45,9 @@ class Logger:
     def writer(self):
         """The writer that Tensorboard summaries are saved to."""
         if self._summary_writer is None:
-            self._summary_writer = tf.summary.create_file_writer(os.path.join(self._dir, 'tb'))
+            self._summary_writer = tf.summary.create_file_writer(
+                os.path.join(self._dir, "tb")
+            )
 
         return self._summary_writer
 
@@ -88,5 +91,5 @@ def printc(color, *args, **kwargs):
     assert isinstance(color, Colors)
     args = [*args]
     args[0] = color.value + args[0]
-    args[-1] = args[-1] + '\033[0m'
+    args[-1] = args[-1] + "\033[0m"
     print(*args, **kwargs)

@@ -28,17 +28,24 @@ class Worker:
         seed: Optional seed with which to see this worker's environments.
     """
 
-    def __init__(self, env_fn: Callable[[], Env], policy_fn: Callable[[], Policy], num_envs: int = 1, seed: int = None):
+    def __init__(
+        self,
+        env_fn: Callable[[], Env],
+        policy_fn: Callable[[], Policy],
+        num_envs: int = 1,
+        seed: int = None,
+    ):
         self.env = SyncVectorEnv([env_fn] * num_envs)
 
         if seed is None:
-            seed = int.from_bytes(os.urandom(4), byteorder='big')
+            seed = int.from_bytes(os.urandom(4), byteorder="big")
         self.env.seed(seed)
 
         self.policy = policy_fn()
 
-        self.obs = np.zeros(self.env.observation_space.shape,
-                            dtype=self.env.observation_space.dtype)
+        self.obs = np.zeros(
+            self.env.observation_space.shape, dtype=self.env.observation_space.dtype
+        )
         self.obs[:] = self.env.reset()
         self.dones = [False for _ in range(self.env.num_envs)]
         self.eps_ids = [uuid.uuid4().int for _ in range(self.env.num_envs)]
@@ -47,7 +54,9 @@ class Worker:
     def as_remote(cls, **kwargs):
         return ray.remote(**kwargs)(cls)
 
-    def collect(self, num_steps: int = 1, **kwargs) -> Tuple[List[SampleBatch], List[dict]]:
+    def collect(
+        self, num_steps: int = 1, **kwargs
+    ) -> Tuple[List[SampleBatch], List[dict]]:
         """Executes the policy in the environment and returns the collected experience.
 
         Args:
@@ -72,7 +81,11 @@ class Worker:
 
             clipped_actions = np.asarray(data[SampleBatch.ACTIONS])
             if isinstance(self.env.action_space, Box):
-                clipped_actions = np.clip(clipped_actions, self.env.action_space.low, self.env.action_space.high)
+                clipped_actions = np.clip(
+                    clipped_actions,
+                    self.env.action_space.low,
+                    self.env.action_space.high,
+                )
 
             self.obs[:], rewards, self.dones, infos = self.env.step(clipped_actions)
 
@@ -80,14 +93,16 @@ class Worker:
                 if done:
                     self.eps_ids[i] = uuid.uuid4().int
 
-            batch.add(**{
-                SampleBatch.REWARDS: rewards,
-                SampleBatch.DONES: self.dones,
-                SampleBatch.NEXT_OBS: self.obs.copy()
-            })
+            batch.add(
+                **{
+                    SampleBatch.REWARDS: rewards,
+                    SampleBatch.DONES: self.dones,
+                    SampleBatch.NEXT_OBS: self.obs.copy(),
+                }
+            )
 
             for info in infos:
-                maybe_ep_info = info.get('episode')
+                maybe_ep_info = info.get("episode")
                 if maybe_ep_info is not None:
                     ep_infos.append(maybe_ep_info)
 
@@ -121,18 +136,23 @@ class Runner:
         seed: Optional seed with which to see this runner's environments.
     """
 
-    def __init__(self,
-                 env_fn: Callable[[], Env],
-                 policy_fn: Callable[[], Policy],
-                 num_envs_per_worker: int = 1,
-                 num_workers: int = 1,
-                 seed: int = None):
+    def __init__(
+        self,
+        env_fn: Callable[[], Env],
+        policy_fn: Callable[[], Policy],
+        num_envs_per_worker: int = 1,
+        num_workers: int = 1,
+        seed: int = None,
+    ):
         if num_workers == 1:
             self._workers = [Worker(env_fn, policy_fn, num_envs_per_worker, seed)]
         else:
             self._workers = [
-                Worker.as_remote(num_gpus=0).remote(env_fn, policy_fn, num_envs_per_worker, seed) for _ in
-                range(num_workers)]
+                Worker.as_remote(num_gpus=0).remote(
+                    env_fn, policy_fn, num_envs_per_worker, seed
+                )
+                for _ in range(num_workers)
+            ]
 
     def run(self, num_steps: int = 1, **kwargs) -> Tuple[EpisodeBatch, List[dict]]:
         """Executes the policy in the environment and returns the collected experience.
@@ -149,7 +169,9 @@ class Runner:
             episodes, ep_infos = self._workers[0].collect(num_steps, **kwargs)
             return EpisodeBatch.from_episodes(episodes), ep_infos
 
-        episodes, ep_infos = zip(*ray.get([w.collect.remote(num_steps, **kwargs) for w in self._workers]))
+        episodes, ep_infos = zip(
+            *ray.get([w.collect.remote(num_steps, **kwargs) for w in self._workers])
+        )
         ep_infos = list(itertools.chain.from_iterable(ep_infos))
         episodes = list(itertools.chain.from_iterable(episodes))
 

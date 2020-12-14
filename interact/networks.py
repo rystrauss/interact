@@ -21,7 +21,9 @@ def register(name):
     return _thunk
 
 
-def build_network_fn(network: str, input_shape: TensorShape) -> Callable[[], tf.keras.Model]:
+def build_network_fn(
+    network: str, input_shape: TensorShape
+) -> Callable[[], tf.keras.Model]:
     """Returns a function that builds a network of the specified type.
 
     Args:
@@ -32,16 +34,18 @@ def build_network_fn(network: str, input_shape: TensorShape) -> Callable[[], tf.
         A function that returns the specified network, as a `tf.keras.Model`.
     """
     if network not in _mapping:
-        raise NotImplementedError(f'{network} is not a supported network type')
+        raise NotImplementedError(f"{network} is not a supported network type")
 
     builder_fn = _mapping[network]
 
     return lambda: builder_fn(input_shape)
 
 
-@gin.configurable(name_or_fn='mlp', blacklist=['input_shape'])
-@register('mlp')
-def build_mlp(input_shape: TensorShape, units: Iterable[int] = (64, 64), activation: str = 'relu') -> tf.keras.Model:
+@gin.configurable(name_or_fn="mlp", blacklist=["input_shape"])
+@register("mlp")
+def build_mlp(
+    input_shape: TensorShape, units: Iterable[int] = (64, 64), activation: str = "relu"
+) -> tf.keras.Model:
     """Build a fully-connected feed-forward network, or multilayer-perceptron.
 
     Args:
@@ -52,21 +56,23 @@ def build_mlp(input_shape: TensorShape, units: Iterable[int] = (64, 64), activat
     Returns:
         The specified MLP, as a `tf.keras.Model`.
     """
-    assert len(units) > 0, 'there must be at least one hidden layer'
+    assert len(units) > 0, "there must be at least one hidden layer"
 
     layers = [Flatten(input_shape=input_shape)]
 
     for n in units:
-        layers.append(Dense(n, activation=activation, kernel_initializer=NormcInitializer()))
+        layers.append(
+            Dense(n, activation=activation, kernel_initializer=NormcInitializer())
+        )
 
     return Sequential(layers)
 
 
-@gin.configurable(name_or_fn='cnn', blacklist=['input_shape'])
-@register('cnn')
-def build_nature_cnn(input_shape: TensorShape,
-                     scale_inputs: bool = True,
-                     units: Iterable[int] = (512,)) -> tf.keras.Model:
+@gin.configurable(name_or_fn="cnn", blacklist=["input_shape"])
+@register("cnn")
+def build_nature_cnn(
+    input_shape: TensorShape, scale_inputs: bool = True, units: Iterable[int] = (512,)
+) -> tf.keras.Model:
     """Builds a convolutional neural network.
 
     Defaults to the network described in the DQN Nature article.
@@ -84,17 +90,22 @@ def build_nature_cnn(input_shape: TensorShape,
     if scale_inputs:
         front_layers = [
             Lambda(lambda x: tf.cast(x, tf.float32) / 255, input_shape=input_shape),
-            Conv2D(32, 8, 4, activation='relu')
+            Conv2D(32, 8, 4, activation="relu"),
         ]
     else:
-        front_layers = [Conv2D(32, 8, 4, activation='relu', input_shape=input_shape)]
+        front_layers = [Conv2D(32, 8, 4, activation="relu", input_shape=input_shape)]
 
-    dense_layers = [Dense(n, activation='relu', kernel_initializer=NormcInitializer()) for n in units]
+    dense_layers = [
+        Dense(n, activation="relu", kernel_initializer=NormcInitializer())
+        for n in units
+    ]
 
-    return Sequential([
-        *front_layers,
-        Conv2D(64, 4, 2, activation='relu'),
-        Conv2D(64, 3, 1, activation='relu'),
-        Flatten(),
-        *dense_layers
-    ])
+    return Sequential(
+        [
+            *front_layers,
+            Conv2D(64, 4, 2, activation="relu"),
+            Conv2D(64, 3, 1, activation="relu"),
+            Flatten(),
+            *dense_layers,
+        ]
+    )

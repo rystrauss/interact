@@ -6,7 +6,11 @@ import gin
 import gym
 
 from interact.environments.atari_wrappers import wrap_atari
-from interact.environments.wrappers import ClipActionsWrapper, MonitorEpisodeWrapper, ScaleRewardsWrapper
+from interact.environments.wrappers import (
+    ClipActionsWrapper,
+    MonitorEpisodeWrapper,
+    ScaleRewardsWrapper,
+)
 
 
 def get_env_type(env_id: str) -> str:
@@ -22,7 +26,7 @@ def get_env_type(env_id: str) -> str:
     """
     _game_envs = defaultdict(set)
     for env in gym.envs.registry.all():
-        env_type = env.entry_point.split(':')[0].split('.')[-1]
+        env_type = env.entry_point.split(":")[0].split(".")[-1]
         _game_envs[env_type].add(env.id)
 
     if env_id in _game_envs.keys():
@@ -33,15 +37,19 @@ def get_env_type(env_id: str) -> str:
             if env_id in e:
                 env_type = g
                 break
-        if ':' in env_id:
-            env_type = re.sub(r':.*', '', env_id)
-        assert env_type is not None, 'env_id {} is not recognized in env types'.format(env_id, _game_envs.keys())
+        if ":" in env_id:
+            env_type = re.sub(r":.*", "", env_id)
+        assert env_type is not None, "env_id {} is not recognized in env types".format(
+            env_id, _game_envs.keys()
+        )
 
     return env_type
 
 
-@gin.configurable('env', whitelist=['reward_scale'])
-def make_env_fn(env_id: str, seed: int = None, reward_scale: float = None) -> Callable[[], gym.Env]:
+@gin.configurable("env", whitelist=["reward_scale"])
+def make_env_fn(
+    env_id: str, seed: int = None, reward_scale: float = None
+) -> Callable[[], gym.Env]:
     """Returns a function that constructs the given environment when called.
 
     Also ensures that relevant wrappers will be applied to the environment.
@@ -66,7 +74,7 @@ def make_env_fn(env_id: str, seed: int = None, reward_scale: float = None) -> Ca
         if reward_scale is not None:
             env = ScaleRewardsWrapper(env, reward_scale)
 
-        if env_type == 'atari':
+        if env_type == "atari":
             env = wrap_atari(env)
 
         if isinstance(env.action_space, gym.spaces.Box):

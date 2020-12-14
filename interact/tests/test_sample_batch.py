@@ -16,7 +16,7 @@ def unfinished_batch():
         data = {
             SampleBatch.ACTIONS: [np.random.choice([0, 1]), np.random.choice([0, 1])],
             SampleBatch.OBS: [np.random.random((4,)), np.random.random((4,))],
-            SampleBatch.EPS_ID: [eps_id, eps_id + 1]
+            SampleBatch.EPS_ID: [eps_id, eps_id + 1],
         }
 
         batch.add(**data)
@@ -26,9 +26,11 @@ def unfinished_batch():
         if done:
             eps_id += 2
 
-        batch.add(**{
-            SampleBatch.DONES: [done, done],
-        })
+        batch.add(
+            **{
+                SampleBatch.DONES: [done, done],
+            }
+        )
 
     return batch
 
@@ -36,7 +38,7 @@ def unfinished_batch():
 @pytest.fixture
 def cartpole_episode_batch():
     np.random.seed(91)
-    env_fn = make_env_fn('CartPole-v1')
+    env_fn = make_env_fn("CartPole-v1")
     env = env_fn()
     policy_fn = lambda: MockPolicy(env.observation_space, env.action_space)
 

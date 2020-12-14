@@ -9,6 +9,7 @@ from interact.policies.base import Policy
 
 # TODO: Add option to normalize observations/rewards.
 
+
 def discount_cumsum(x: np.ndarray, gamma: float) -> float:
     """Calculates the discounted cumulative sum over a reward sequence `x`.
 
@@ -24,12 +25,14 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> float:
     return signal.lfilter([1], [1, float(-gamma)], x[::-1], axis=0)[::-1]
 
 
-def compute_advantages(rollout: SampleBatch,
-                       last_r: float,
-                       gamma: float = 0.9,
-                       lam: float = 1.0,
-                       use_gae: bool = True,
-                       use_critic: bool = True) -> SampleBatch:
+def compute_advantages(
+    rollout: SampleBatch,
+    last_r: float,
+    gamma: float = 0.9,
+    lam: float = 1.0,
+    use_gae: bool = True,
+    use_critic: bool = True,
+) -> SampleBatch:
     """Given a rollout, compute its value targets and the advantages.
 
     This implementation comes from RLLib:
@@ -48,8 +51,10 @@ def compute_advantages(rollout: SampleBatch,
     """
     rollout_size = len(rollout[SampleBatch.ACTIONS])
 
-    assert SampleBatch.VALUE_PREDS in rollout or not use_critic, 'use_critic=True but values not found'
-    assert use_critic or not use_gae, 'Can\'t use GAE without using a value function'
+    assert (
+        SampleBatch.VALUE_PREDS in rollout or not use_critic
+    ), "use_critic=True but values not found"
+    assert use_critic or not use_gae, "Can't use GAE without using a value function"
 
     if use_gae:
         vpred_t = np.concatenate([rollout[SampleBatch.VALUE_PREDS], np.array([last_r])])
@@ -57,22 +62,33 @@ def compute_advantages(rollout: SampleBatch,
         # This formula for the advantage comes from:
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
         rollout[SampleBatch.ADVANTAGES] = discount_cumsum(delta_t, gamma * lam)
-        rollout[SampleBatch.RETURNS] = \
-            (rollout[SampleBatch.ADVANTAGES] + rollout[SampleBatch.VALUE_PREDS]).astype(np.float32)
+        rollout[SampleBatch.RETURNS] = (
+            rollout[SampleBatch.ADVANTAGES] + rollout[SampleBatch.VALUE_PREDS]
+        ).astype(np.float32)
     else:
-        rewards_plus_v = np.concatenate([rollout[SampleBatch.REWARDS], np.array([last_r])])
-        discounted_returns = discount_cumsum(rewards_plus_v, gamma)[:-1].astype(np.float32)
+        rewards_plus_v = np.concatenate(
+            [rollout[SampleBatch.REWARDS], np.array([last_r])]
+        )
+        discounted_returns = discount_cumsum(rewards_plus_v, gamma)[:-1].astype(
+            np.float32
+        )
 
         if use_critic:
-            rollout[SampleBatch.ADVANTAGES] = discounted_returns - rollout[SampleBatch.VALUE_PREDS]
+            rollout[SampleBatch.ADVANTAGES] = (
+                discounted_returns - rollout[SampleBatch.VALUE_PREDS]
+            )
             rollout[SampleBatch.RETURNS] = discounted_returns
         else:
             rollout[SampleBatch.ADVANTAGES] = discounted_returns
-            rollout[SampleBatch.RETURNS] = np.zeros_like(rollout[SampleBatch.ADVANTAGES])
+            rollout[SampleBatch.RETURNS] = np.zeros_like(
+                rollout[SampleBatch.ADVANTAGES]
+            )
 
     rollout[SampleBatch.ADVANTAGES] = rollout[SampleBatch.ADVANTAGES].astype(np.float32)
 
-    assert all(val.shape[0] == rollout_size for key, val in rollout.items()), 'Rollout stacked incorrectly!'
+    assert all(
+        val.shape[0] == rollout_size for key, val in rollout.items()
+    ), "Rollout stacked incorrectly!"
     return rollout
 
 
@@ -107,12 +123,14 @@ class AdvantagePostprocessor(Postprocessor):
         use_critic: Whether to use critic (value estimates). Setting this to False will use 0 as baseline.
     """
 
-    def __init__(self,
-                 policy: Policy,
-                 gamma: float = 0.99,
-                 lam: float = 0.95,
-                 use_gae: bool = True,
-                 use_critic: bool = True):
+    def __init__(
+        self,
+        policy: Policy,
+        gamma: float = 0.99,
+        lam: float = 0.95,
+        use_gae: bool = True,
+        use_critic: bool = True,
+    ):
         self.policy = policy
         self.gamma = gamma
         self.lam = lam
@@ -123,12 +141,10 @@ class AdvantagePostprocessor(Postprocessor):
         if episode[SampleBatch.DONES][-1]:
             last_r = 0.0
         else:
-            last_r = np.asarray(self.policy.value(episode[SampleBatch.NEXT_OBS][-1:])[0])
+            last_r = np.asarray(
+                self.policy.value(episode[SampleBatch.NEXT_OBS][-1:])[0]
+            )
 
         compute_advantages(
-            episode,
-            last_r,
-            self.gamma,
-            self.lam,
-            self.use_gae,
-            self.use_critic)
+            episode, last_r, self.gamma, self.lam, self.use_gae, self.use_critic
+        )

@@ -144,7 +144,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         batch = SampleBatch.concat_samples([self._storage[i] for i in idxes])
 
         batch[SampleBatch.PRIO_WEIGHTS] = np.array(weights)
-        batch['batch_indices'] = np.array(batch_indexes)
+        batch["batch_indices"] = np.array(batch_indexes)
 
         return batch
 

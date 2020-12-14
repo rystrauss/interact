@@ -21,7 +21,6 @@ def explained_variance(targets: TensorType, preds: TensorType) -> tf.Tensor:
 
 
 class NormcInitializer(tf.keras.initializers.Initializer):
-
     def __init__(self, stddev=1.0):
         self.stddev = stddev
 
