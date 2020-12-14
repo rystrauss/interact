@@ -4,9 +4,10 @@ import numpy as np
 from scipy import signal
 
 from interact.experience.sample_batch import SampleBatch
-from interact.policies.actor_critic import ActorCriticPolicy
 from interact.policies.base import Policy
 
+
+# TODO: Add option to normalize observations/rewards.
 
 def discount_cumsum(x: np.ndarray, gamma: float) -> float:
     """Calculates the discounted cumulative sum over a reward sequence `x`.

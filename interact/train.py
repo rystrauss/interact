@@ -88,9 +88,15 @@ def train(agent: str = None,
                 metric.reset_states()
 
             if ep_info_buf:
+                ep_rewards = [ep_info['reward'] for ep_info in ep_info_buf]
+                ep_lengths = [ep_info['length'] for ep_info in ep_info_buf]
                 episode_data = {
-                    'reward_mean': np.mean([ep_info['reward'] for ep_info in ep_info_buf]),
-                    'length_mean': np.mean([ep_info['length'] for ep_info in ep_info_buf])
+                    'reward_mean': np.mean(ep_rewards),
+                    'reward_min': np.min(ep_rewards),
+                    'reward_max': np.max(ep_rewards),
+                    'length_mean': np.mean(ep_lengths),
+                    'length_min': np.min(ep_lengths),
+                    'length_max': np.max(ep_lengths)
                 }
                 logger.log_scalars(curr_timesteps, prefix='episode', **episode_data)
 

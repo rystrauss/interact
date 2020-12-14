@@ -4,6 +4,7 @@ import gin
 import gym
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 from interact.agents.base import Agent
 from interact.agents.sac.policy import SACPolicy, TwinQNetwork
@@ -114,6 +115,7 @@ class SACAgent(Agent):
         self.runner = Runner(normalized_env_fn, policy_fn, num_envs_per_worker, num_workers)
 
         self.log_alpha = tf.Variable(np.log(initial_alpha), trainable=learn_alpha, dtype=tf.float32)
+        self.alpha = tfp.util.DeferredTensor(self.log_alpha, tf.exp)
 
     @property
     def timesteps_per_iteration(self) -> int:
@@ -138,7 +140,7 @@ class SACAgent(Agent):
                 target_q_values_1, target_q_values_2 = self.target_q_network([next_obs, next_actions])
                 target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
 
-            q_targets = rewards + self.gamma * (1.0 - dones) * (target_q_values - tf.exp(self.log_alpha) * next_logpacs)
+            q_targets = rewards + self.gamma * (1.0 - dones) * (target_q_values - self.alpha * next_logpacs)
             q_targets = tf.stop_gradient(q_targets)
 
             if self._discrete:
@@ -149,8 +151,8 @@ class SACAgent(Agent):
             else:
                 q_values_1, q_values_2 = self.q_network([obs, actions])
 
-            loss = 0.5 * (tf.losses.mse(q_values_1, q_targets) + tf.losses.mse(q_values_2, q_targets))
-            loss = tf.reduce_mean(loss)
+            loss = tf.losses.mse(q_values_1, q_targets) + tf.losses.mse(q_values_2, q_targets)
+            loss = 0.5 * tf.nn.compute_average_loss(loss)
 
         grads = tape.gradient(loss, vars)
         self.q_optimizer.apply_gradients(zip(grads, vars))
@@ -176,7 +178,7 @@ class SACAgent(Agent):
                     tf.reduce_sum(
                         tf.multiply(
                             probs,
-                            tf.stop_gradient(tf.exp(self.log_alpha)) * logits - tf.stop_gradient(q_values)),
+                            tf.stop_gradient(self.alpha) * logits - tf.stop_gradient(q_values)),
                         axis=-1))
 
                 if self.learn_alpha:
@@ -192,11 +194,11 @@ class SACAgent(Agent):
                 q_values_1, q_values_2 = self.q_network([obs, actions])
                 q_values = tf.minimum(q_values_1, q_values_2)
 
-                actor_loss = tf.reduce_mean(
-                    (tf.stop_gradient(tf.exp(self.log_alpha)) * logpacs - q_values))
+                actor_loss = tf.nn.compute_average_loss(self.alpha * logpacs - q_values)
 
                 if self.learn_alpha:
-                    alpha_loss = -tf.reduce_mean(self.log_alpha * tf.stop_gradient(logpacs + self.target_entropy))
+                    alpha_loss = -tf.nn.compute_average_loss(
+                        self.log_alpha * tf.stop_gradient(logpacs + self.target_entropy))
                 else:
                     alpha_loss = 0
 
@@ -211,7 +213,7 @@ class SACAgent(Agent):
             'actor_loss': actor_loss,
             'policy_entropy': tf.reduce_mean(entropy),
             'alpha_loss': alpha_loss,
-            'alpha': tf.exp(self.log_alpha)
+            'alpha': self.alpha
         }
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
