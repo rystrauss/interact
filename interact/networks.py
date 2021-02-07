@@ -28,7 +28,8 @@ def build_network_fn(
 
     Args:
         network: The type of network to be built.
-        input_shape: The network's input shape. Should correspond to the shape of the environment's observations.
+        input_shape: The network's input shape. Should correspond to the shape of the
+            environment's observations.
 
     Returns:
         A function that returns the specified network, as a `tf.keras.Model`.
@@ -50,7 +51,8 @@ def build_mlp(
 
     Args:
         input_shape: The network's input shape.
-        units: An iterable of integers where the ith number is the number of units in the ith hidden layer.
+        units: An iterable of integers where the ith number is the number of units
+            in the ith hidden layer.
         activation: The activation function to be used in the network.
 
     Returns:

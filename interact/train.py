@@ -125,10 +125,16 @@ def train(
     required=True,
     help="Path to the Gin configuration file to use.",
 )
-def main(config):
+@click.option(
+    "--eager",
+    is_flag=True,
+    help="If flag is set, eager execution will be enabled inside tf.functions.",
+)
+def main(config, eager):
     """Trains an agent."""
     ray.init()
     gin.parse_config_file(config)
+    tf.config.run_functions_eagerly(eager)
     train()
 
 

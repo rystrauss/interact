@@ -42,34 +42,25 @@ class SACPolicy(Policy):
         else:
             means, logstds = tf.split(logits, 2, axis=-1)
             logstds = tf.clip_by_value(logstds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
-            pi = tfd.Normal(means, tf.exp(logstds))
+            pi = tfd.MultivariateNormalDiag(means, tf.exp(logstds))
+
             actions = pi.sample()
+
             logpacs = pi.log_prob(actions)
-            logpacs = tf.clip_by_value(logpacs, -100, 100)
-            logpacs = tf.reduce_sum(logpacs, axis=-1)
-            #  This formula is mathematically equivalent to
-            #  `tf.log1p(-tf.square(tf.tanh(x)))`, however this code is more numerically stable.
-            #
-            #  Derivation:
-            #    log(1 - tanh(x)^2)
-            #    = log(sech(x)^2)
-            #    = 2 * log(sech(x))
-            #    = 2 * log(2e^-x / (e^-2x + 1))
-            #    = 2 * (log(2) - x - log(e^-2x + 1))
-            #    = 2 * (log(2) - x - softplus(-2x))
             logpacs -= tf.reduce_sum(
-                2 * (np.log(2) - actions - tf.nn.softplus(-2 * actions)), axis=-1
+                2 * (np.log(2) - logpacs - tf.nn.softplus(-2 * logpacs))
             )
-            actions = tf.nn.tanh(actions)
+
+            actions = tf.math.tanh(actions)
             actions = tf.clip_by_value(actions, -1 + SMALL_NUMBER, 1 - SMALL_NUMBER)
 
-        return actions, logpacs, pi.entropy(), logits
+        return actions, logpacs, logits
 
     @tf.function
     def _step(
         self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
     ) -> Dict[str, Union[float, np.ndarray]]:
-        actions, logpacs, _, _ = self.call(obs)
+        actions, logpacs, _ = self.call(obs)
         return {SampleBatch.ACTIONS: actions, SampleBatch.ACTION_LOGP: logpacs}
 
 
@@ -147,4 +138,4 @@ class TwinQNetwork(layers.Layer):
         self.q2 = QFunction(observation_space, action_space, network, units)
 
     def call(self, inputs, **kwargs):
-        return self.q1(inputs), self.q2(inputs)
+        return tf.minimum(self.q1(inputs), self.q2(inputs))

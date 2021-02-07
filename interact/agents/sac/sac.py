@@ -34,6 +34,7 @@ class SACAgent(Agent):
         entropy_lr: Learning rate to use for tuning the entropy parameter.
         learning_starts: Number of timesteps to only collect experience before learning starts.
         tau: Parameter for the polyak averaging used to update the target networks.
+        target_update_interval: Frequency with which the target Q-networks are updated.
         initial_alpha: The initial value of the entropy parameter.
         learn_alpha: Whether or not the alpha parameter is learned during training.
         target_entropy: The target entropy parameter. If 'auto', this is set to -|A|
@@ -55,6 +56,7 @@ class SACAgent(Agent):
         entropy_lr: float = 3e-4,
         learning_starts: int = 1500,
         tau: float = 5e-3,
+        target_update_interval: int = 1,
         initial_alpha: float = 1.0,
         learn_alpha: bool = True,
         target_entropy: Union[str, float] = "auto",
@@ -85,6 +87,7 @@ class SACAgent(Agent):
         self.entropy_lr = entropy_lr
         self.learning_starts = learning_starts
         self.tau = tau
+        self.target_update_interval = target_update_interval
         self.initial_alpha = initial_alpha
         self.learn_alpha = learn_alpha
         self.target_entropy = target_entropy
@@ -111,7 +114,10 @@ class SACAgent(Agent):
         self.target_q_network.trainable = False
 
         self.actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
-        self.q_optimizer = tf.keras.optimizers.Adam(critic_lr)
+        self.q_optimizers = (
+            tf.keras.optimizers.Adam(critic_lr),
+            tf.keras.optimizers.Adam(critic_lr),
+        )
         self.alpha_optimizer = (
             None if not learn_alpha else tf.keras.optimizers.Adam(entropy_lr)
         )
@@ -135,63 +141,58 @@ class SACAgent(Agent):
 
     @tf.function
     def _update_critic(self, obs, actions, rewards, next_obs, dones):
-        vars = self.q_network.trainable_variables
-        with tf.GradientTape(watch_accessed_variables=False) as tape:
-            tape.watch(vars)
-            next_actions, next_logpacs, _, logits = self.policy(next_obs)
+        next_actions, next_logpacs, logits = self.policy(next_obs)
 
-            if self._discrete:
-                target_q_values_1, target_q_values_2 = self.target_q_network(next_obs)
-                target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
-                target_q_values = tf.reduce_sum(
-                    tf.exp(logits) * target_q_values, axis=-1
+        if self._discrete:
+            target_q_values = self.target_q_network(next_obs)
+            target_q_values = tf.reduce_sum(tf.exp(logits) * target_q_values, axis=-1)
+        else:
+            target_q_values = self.target_q_network([next_obs, next_actions])
+
+        q_targets = rewards + self.gamma * (1.0 - dones) * (
+            target_q_values - self.alpha * next_logpacs
+        )
+
+        qs_values = []
+        qs_losses = []
+
+        for q_net, optimizer in zip(
+            (self.q_network.q1, self.q_network.q2), self.q_optimizers
+        ):
+            with tf.GradientTape() as tape:
+                if self._discrete:
+                    q_values = q_net(obs)
+                    num_actions = q_values.shape[-1]
+                    q_values = tf.reduce_sum(
+                        q_values * tf.one_hot(next_actions, num_actions), axis=-1
+                    )
+                else:
+                    q_values = q_net([obs, actions])
+
+                loss = 0.5 * tf.losses.mse(
+                    q_targets[:, tf.newaxis], q_values[:, tf.newaxis]
                 )
-            else:
-                target_q_values_1, target_q_values_2 = self.target_q_network(
-                    [next_obs, next_actions]
-                )
-                target_q_values = tf.minimum(target_q_values_1, target_q_values_2)
+                loss = tf.nn.compute_average_loss(loss)
 
-            q_targets = rewards + self.gamma * (1.0 - dones) * (
-                target_q_values - self.alpha * next_logpacs
-            )
-            q_targets = tf.stop_gradient(q_targets)
+            grads = tape.gradient(loss, q_net.trainable_variables)
+            optimizer.apply_gradients(zip(grads, q_net.trainable_variables))
 
-            if self._discrete:
-                q_values_1, q_values_2 = self.q_network(obs)
-                num_actions = q_values_1.shape[-1]
-                q_values_1 = tf.reduce_sum(
-                    q_values_1 * tf.one_hot(next_actions, num_actions), axis=-1
-                )
-                q_values_2 = tf.reduce_sum(
-                    q_values_2 * tf.one_hot(next_actions, num_actions), axis=-1
-                )
-            else:
-                q_values_1, q_values_2 = self.q_network([obs, actions])
+            qs_losses.append(loss)
+            qs_values.append(q_values)
 
-            loss = tf.losses.mse(q_values_1, q_targets) + tf.losses.mse(
-                q_values_2, q_targets
-            )
-            loss = 0.5 * tf.nn.compute_average_loss(loss)
-
-        grads = tape.gradient(loss, vars)
-        self.q_optimizer.apply_gradients(zip(grads, vars))
-
-        return {"critic_loss": loss}
+        return {
+            "critic_loss": tf.reduce_mean(qs_losses),
+            "q_values_mean": tf.reduce_mean(q_values),
+        }
 
     @tf.function
     def _update_policy_and_alpha(self, obs):
-        with tf.GradientTape(
-            watch_accessed_variables=False
-        ) as actor_tape, tf.GradientTape(watch_accessed_variables=False) as alpha_tape:
-            actor_tape.watch(self.policy.trainable_variables)
-            alpha_tape.watch([self.log_alpha])
-            actions, logpacs, entropy, logits = self.policy(obs)
+        with tf.GradientTape() as actor_tape, tf.GradientTape() as alpha_tape:
+            actions, logpacs, logits = self.policy(obs)
             probs = tf.exp(logits)
 
             if self._discrete:
-                q_values_1, q_values_2 = self.q_network(obs)
-                q_values = tf.minimum(q_values_1, q_values_2)
+                q_values = self.q_network(obs)
 
                 actor_loss = tf.reduce_mean(
                     tf.reduce_sum(
@@ -218,15 +219,16 @@ class SACAgent(Agent):
                 else:
                     alpha_loss = 0
             else:
-                q_values_1, q_values_2 = self.q_network([obs, actions])
-                q_values = tf.minimum(q_values_1, q_values_2)
+                q_values = self.q_network([obs, actions])
 
-                actor_loss = tf.nn.compute_average_loss(self.alpha * logpacs - q_values)
+                actor_loss = self.alpha * logpacs - q_values
+                actor_loss = tf.nn.compute_average_loss(actor_loss)
 
                 if self.learn_alpha:
-                    alpha_loss = -tf.nn.compute_average_loss(
-                        self.log_alpha * tf.stop_gradient(logpacs + self.target_entropy)
+                    alpha_loss = -1.0 * (
+                        self.alpha * tf.stop_gradient(logpacs + self.target_entropy)
                     )
+                    alpha_loss = tf.nn.compute_average_loss(alpha_loss)
                 else:
                     alpha_loss = 0
 
@@ -241,17 +243,23 @@ class SACAgent(Agent):
 
         return {
             "actor_loss": actor_loss,
-            "policy_entropy": tf.reduce_mean(entropy),
             "alpha_loss": alpha_loss,
             "alpha": self.alpha,
         }
+
+    @tf.function
+    def _update_target(self):
+        for target_var, q_var in zip(
+            self.target_q_network.variables, self.q_network.variables
+        ):
+            target_var.assign(self.tau * target_var + (1 - self.tau) * q_var)
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
         episodes, ep_infos = self.runner.run(1)
 
         self.buffer.add(episodes.to_sample_batch())
 
-        metrics = {}
+        metrics = dict()
         if (
             update * self.timesteps_per_iteration > self.learning_starts
             and update % self.train_freq == 0
@@ -268,12 +276,10 @@ class SACAgent(Agent):
                 )
             )
 
-            metrics.update(self._update_policy_and_alpha(sample[SampleBatch.OBS]))
+            # metrics.update(self._update_policy_and_alpha(sample[SampleBatch.OBS]))
 
-            for target_var, q_var in zip(
-                self.target_q_network.variables, self.q_network.variables
-            ):
-                target_var.assign(self.tau * target_var + (1 - self.tau) * q_var)
+            if update % self.target_update_interval == 0:
+                self._update_target()
 
             if self.num_workers != 1:
                 self.runner.update_policies(self.policy.get_weights())
