@@ -162,6 +162,6 @@ class SampleBatch:
                 merged[k].append(v)
 
         for k, v in merged.items():
-            merged[k] = np.squeeze(np.vstack(v))
+            merged[k] = np.concatenate(v, axis=0)
 
         return SampleBatch(merged, _finished=True)

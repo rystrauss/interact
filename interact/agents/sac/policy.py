@@ -16,11 +16,16 @@ layers = tf.keras.layers
 
 class SACPolicy(Policy):
     def __init__(
-        self, observation_space: gym.Space, action_space: gym.Space, network: str
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        network: str,
     ):
         super().__init__(observation_space, action_space)
 
         self._discrete = isinstance(action_space, gym.spaces.Discrete)
+        # This assumes that all action dimensions have the same bounds.
+        self._action_limit = None if self._discrete else action_space.high[0]
 
         self._base_model = build_network_fn(network, observation_space.shape)()
         num_outputs = (
@@ -35,36 +40,36 @@ class SACPolicy(Policy):
         logits = self._policy_fn(latent)
 
         if self._discrete:
-            logits = tf.nn.log_softmax(logits)
             pi = tfd.Categorical(logits)
             actions = pi.sample()
-            logpacs = pi.log_prob(actions)
+            logpacs = logits
         else:
             means, logstds = tf.split(logits, 2, axis=-1)
             logstds = tf.clip_by_value(logstds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
+
             pi = tfd.MultivariateNormalDiag(means, tf.exp(logstds))
-
             actions = pi.sample()
-
             logpacs = pi.log_prob(actions)
+
             logpacs -= tf.reduce_sum(
-                2 * (np.log(2) - logpacs - tf.nn.softplus(-2 * logpacs))
+                2 * (np.log(2) - actions - tf.nn.softplus(-2 * actions)), axis=1
             )
 
             actions = tf.math.tanh(actions)
             actions = tf.clip_by_value(actions, -1 + SMALL_NUMBER, 1 - SMALL_NUMBER)
+            actions *= self._action_limit
 
-        return actions, logpacs, logits
+        return actions, logpacs
 
     @tf.function
     def _step(
         self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
     ) -> Dict[str, Union[float, np.ndarray]]:
-        actions, logpacs, _ = self.call(obs)
+        actions, logpacs = self.call(obs)
         return {SampleBatch.ACTIONS: actions, SampleBatch.ACTION_LOGP: logpacs}
 
 
-class QFunction(layers.Layer):
+class SACQFunction(layers.Layer):
     def __init__(
         self,
         observation_space: gym.Space,
@@ -95,17 +100,6 @@ class QFunction(layers.Layer):
             + [layers.Dense(output_units, kernel_initializer=NormcInitializer(0.01))]
         )
 
-        # Do a fake pass through the network to make sure weights are initialized
-        if not self._discrete:
-            self(
-                [
-                    np.zeros(observation_space.shape)[None, ...],
-                    np.zeros(action_space.shape)[None, ...],
-                ]
-            )
-        else:
-            self(np.zeros(observation_space.shape)[None, ...])
-
     def call(self, inputs, **kwargs):
         if self._discrete:
             latent = self._base_model(inputs)
@@ -134,8 +128,8 @@ class TwinQNetwork(layers.Layer):
     ):
         super().__init__(**kwargs)
 
-        self.q1 = QFunction(observation_space, action_space, network, units)
-        self.q2 = QFunction(observation_space, action_space, network, units)
+        self.q1 = SACQFunction(observation_space, action_space, network, units)
+        self.q2 = SACQFunction(observation_space, action_space, network, units)
 
     def call(self, inputs, **kwargs):
-        return tf.minimum(self.q1(inputs), self.q2(inputs))
+        return self.q1(inputs), self.q2(inputs)
