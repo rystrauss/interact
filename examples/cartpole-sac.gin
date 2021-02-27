@@ -1,0 +1,12 @@
+train.agent = 'sac'
+train.env_id = 'CartPole-v1'
+train.total_timesteps = 100000
+train.log_interval = 100
+
+sac.gamma = 0.95
+sac.batch_size = 32
+sac.actor_lr = 0.005
+sac.critic_lr = 0.005
+sac.entropy_lr = 0.0001
+sac.tau = 1.0
+sac.target_update_interval = 32
