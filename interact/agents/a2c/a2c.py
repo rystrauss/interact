@@ -21,18 +21,21 @@ from interact.schedules import LinearDecay
 class A2CAgent(Agent):
     """The advantage actor-critic algorithm.
 
-    Advantage Actor-Critic (A2C) is a relatively simply actor-critic method which uses the advantage function
-    (returns minus values) as the baseline in the policy update.
+    Advantage Actor-Critic (A2C) is a relatively simply actor-critic method which uses
+    the advantage function in the policy update.
 
     Args:
-        env_fn: A function that, when called, returns an instance of the agent's environment.
+        env_fn: A function that, when called, returns an instance of the agent's
+            environment.
         policy_network: The type of model to use for the policy network.
-        value_network: Either 'copy' or 'shared', indicating whether or not weights should be shared between
-            the policy and value networks.
-        num_envs_per_worker: The number of synchronous environments to be executed in each worker.
+        value_network: Either 'copy' or 'shared', indicating whether or not weights
+            should be shared between the policy and value networks.
+        num_envs_per_worker: The number of synchronous environments to be executed in
+            each worker.
         num_workers: The number of parallel workers to use for experience collection.
-        use_critic: Whether to use critic (value estimates). Setting this to False will use 0 as baseline.
-            If this is false, the agent becomes a vanilla actor-critic method.
+        use_critic: Whether to use critic (value estimates). Setting this to False will
+            use 0 as baseline. If this is false, the agent becomes a vanilla
+            actor-critic method.
         use_gae: Whether or not to use GAE.
         lam: The lambda parameter used in GAE.
         gamma: The discount factor.
@@ -42,6 +45,7 @@ class A2CAgent(Agent):
         lr: The initial learning rate.
         lr_schedule: The schedule for the learning rate, either 'constant' or 'linear'.
         max_grad_norm: The maximum value for the gradient clipping.
+        epsilon: The epsilon value used by the Adam optimizer.
     """
 
     def __init__(
@@ -61,6 +65,7 @@ class A2CAgent(Agent):
         lr: float = 0.0001,
         lr_schedule: str = "constant",
         max_grad_norm: float = 0.5,
+        epsilon: float = 1e-7,
     ):
         super().__init__(env_fn)
 
@@ -98,6 +103,7 @@ class A2CAgent(Agent):
         self.lr = lr
         self.lr_schedule = lr_schedule
         self.max_grad_norm = max_grad_norm
+        self.epsilon = epsilon
 
         self.optimizer = None
 
@@ -116,8 +122,9 @@ class A2CAgent(Agent):
             # Define the individual loss functions
             policy_loss = tf.reduce_mean(advantages * neglogpacs)
             value_loss = tf.reduce_mean((returns - value_preds) ** 2)
-            # The final loss to be minimized is a combination of the policy and value losses, in addition
-            # to an entropy bonus which can be used to encourage exploration
+            # The final loss to be minimized is a combination of the policy and value
+            # losses, in addition to an entropy bonus which can be used to encourage
+            # exploration
             loss = policy_loss - entropy * self.ent_coef + value_loss * self.vf_coef
 
         # Perform a gradient update to minimize the loss
@@ -127,7 +134,8 @@ class A2CAgent(Agent):
         # Apply the gradient update
         self.optimizer.apply_gradients(zip(grads, self.policy.trainable_weights))
 
-        # This is a measure of how well the value function explains the variance in the rewards
+        # This is a measure of how well the value function explains the variance in
+        # the rewards
         value_explained_variance = explained_variance(returns, value_preds)
 
         return {
@@ -154,14 +162,15 @@ class A2CAgent(Agent):
         else:
             lr = self.lr
 
-        # TODO: Allow setting for epsilon parameter, which can make a big difference. (1e-5)
-        self.optimizer = tf.keras.optimizers.Adam(lr)
+        self.optimizer = tf.keras.optimizers.Adam(lr, epsilon=self.epsilon)
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
-        # Update the weights of the actor policies to be consistent with the most recent update.
+        # Update the weights of the actor policies to be consistent with the most
+        # recent update.
         self.runner.update_policies(self.policy.get_weights())
 
-        # Rollout the current policy in the environment to get back a batch of experience.
+        # Rollout the current policy in the environment to get back a batch of
+        # experience.
         episodes, ep_infos = self.runner.run(self.nsteps)
 
         # Compute advantages for the collected experience.
