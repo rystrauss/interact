@@ -25,8 +25,8 @@ class QNetwork(tf.keras.Model):
         action_space: The action space of this policy.
         network: The type of network to use (e.g. 'cnn', 'mlp').
         dueling: A boolean indicating whether or not to use the dueling architecture.
-        dueling_units: The number of hidden units in the first layer of each stream in the dueling network.
-            Only applicable if `dueling` is True.
+        dueling_units: The number of hidden units in the first layer of each stream in
+            the dueling network. Only applicable if `dueling` is True.
     """
 
     def __init__(
@@ -71,7 +71,8 @@ class QNetwork(tf.keras.Model):
 class DQNPolicy(Policy):
     """A policy for a DQN agent.
 
-    This policy encapsulates the online Q-network and the target network, and uses an epsilon-greedy exploration policy.
+    This policy encapsulates the online Q-network and the target network, and uses
+    an epsilon-greedy exploration policy.
 
     Args:
         observation_space: The observation space of this policy.
@@ -104,7 +105,7 @@ class DQNPolicy(Policy):
     ) -> Dict[str, Union[float, np.ndarray]]:
         epsilon = kwargs.get("epsilon")
 
-        q_values = self(obs)
+        q_values = self.q_network(obs)
         deterministic_actions = tf.argmax(q_values, axis=-1)
         random_actions = tf.random.uniform(
             [len(obs)], 0, self.action_space.n, dtype=tf.int64

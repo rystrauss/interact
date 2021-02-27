@@ -3,7 +3,7 @@ from typing import Callable, Union, List, Tuple
 import gin
 import tensorflow as tf
 from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, Lambda
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, Lambda, Permute
 
 from interact.typing import TensorShape
 from interact.utils.math_utils import NormcInitializer
@@ -78,6 +78,7 @@ def build_nature_cnn(
     input_shape: TensorShape,
     scale_inputs: bool = True,
     hidden_units: Union[List[int], Tuple[int]] = (512,),
+    permute_channels: bool = True,
 ) -> tf.keras.Model:
     """Builds a convolutional neural network.
 
@@ -89,29 +90,37 @@ def build_nature_cnn(
             ints) will be scaled to the range [0,1] in the first layer.
         hidden_units: An iterable of integers where the ith number is the number of
             units in the ith dense layer after the convolutional layers.
+        permute_channels: If True, inputs are expected to have the format BCHW and will
+            be permuted to BHWC format.
 
     Returns:
         The specified CNN, as a `tf.keras.Model`.
     """
+    #
+    front_layers = []
+
+    if permute_channels:
+        front_layers.append(Permute((2, 3, 1)))
+
     if scale_inputs:
-        front_layers = [
-            Lambda(lambda x: tf.cast(x, tf.float32) / 255, input_shape=input_shape),
-            Conv2D(32, 8, 4, activation="relu"),
-        ]
-    else:
-        front_layers = [Conv2D(32, 8, 4, activation="relu", input_shape=input_shape)]
+        front_layers.append(Lambda(lambda x: tf.cast(x, tf.float32) / 255))
 
     dense_layers = [
         Dense(n, activation="relu", kernel_initializer=NormcInitializer())
         for n in hidden_units
     ]
 
-    return Sequential(
+    model = Sequential(
         [
             *front_layers,
+            Conv2D(32, 8, 4, activation="relu"),
             Conv2D(64, 4, 2, activation="relu"),
             Conv2D(64, 3, 1, activation="relu"),
             Flatten(),
             *dense_layers,
         ]
     )
+
+    model.build((None, *input_shape))
+
+    return model
