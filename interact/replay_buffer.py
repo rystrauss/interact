@@ -7,8 +7,8 @@ from interact.utils.segment_tree import SumSegmentTree, MinSegmentTree
 class ReplayBuffer:
     """A buffer for storing and sampling experience.
 
-    This buffer operates as a circular buffer, where the oldest experience is overwritten once the
-    size limit is reached.
+    This buffer operates as a circular buffer, where the oldest experience is
+    overwritten once the size limit is reached.
 
     Args:
         size: The maximum size of the buffer.
@@ -84,8 +84,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Adds experience to the replay buffer.
 
         Args:
-            item: A sample batch of experience to be added. If this batch contains an entry for the key
-                `SampleBatch.PRIO_WEIGHTS`, it will be used as the corresponding priority weights.
+            item: A sample batch of experience to be added. If this batch contains an
+                entry for the key `SampleBatch.PRIO_WEIGHTS`, it will be used as the
+                corresponding priority weights.
 
         Returns:
             None.

@@ -192,7 +192,7 @@ class SACAgent(Agent):
 
         q_targets = tf.minimum(*self.target_q_network(next_obs))
         q_targets = tf.reduce_sum(
-            tf.exp(next_logpacs) * q_targets - self.alpha * next_logpacs, axis=-1
+            tf.exp(next_logpacs) * (q_targets - self.alpha * next_logpacs), axis=-1
         )
         backup = rewards + self.gamma * (1.0 - dones) * q_targets
 
