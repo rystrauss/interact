@@ -16,9 +16,7 @@ class EpisodeBatch:
 
     def __init__(self, **kwargs):
         if not kwargs.get("_internal"):
-            raise ValueError(
-                "This class is not meant to be directly instantiated."
-            )
+            raise ValueError("This class is not meant to be directly instantiated.")
 
         self._episodes = kwargs.get("episodes")
 

@@ -1,10 +1,9 @@
-import numpy as np
 import pytest
 
-from interact.environments.utils import make_env_fn
+from interact.environments import make_env_fn
 from interact.experience.postprocessing import AdvantagePostprocessor
-from interact.experience.sample_batch import SampleBatch
 from interact.experience.runner import Runner
+from interact.experience.sample_batch import SampleBatch
 from interact.tests.mock_policy import MockPolicy
 
 

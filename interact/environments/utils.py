@@ -57,6 +57,8 @@ def make_env_fn(
 
     Also ensures that relevant wrappers will be applied to the environment.
 
+    # TODO: Add option to normalize observations/rewards.
+
     Args:
         env_id: The ID of the environment to be created by the returned function.
         seed: An optional seed to seed the returned environment with.

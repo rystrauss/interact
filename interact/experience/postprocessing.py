@@ -5,8 +5,6 @@ import numpy as np
 from scipy import signal
 
 from interact.experience.sample_batch import SampleBatch
-
-# TODO: Add option to normalize observations/rewards.
 from interact.typing import TensorType
 
 

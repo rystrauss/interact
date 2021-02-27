@@ -1,12 +1,12 @@
-from typing import Callable, Iterable, Union, List, Tuple
+from typing import Callable, Union, List, Tuple
 
 import gin
 import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense, Conv2D, Flatten, Lambda
 
-from interact.utils.math_utils import NormcInitializer
 from interact.typing import TensorShape
+from interact.utils.math_utils import NormcInitializer
 
 _mapping = {}
 

@@ -7,7 +7,7 @@ import tensorflow as tf
 from gym.wrappers import Monitor
 
 from interact.agents.utils import get_agent
-from interact.environments.utils import make_env_fn
+from interact.environments import make_env_fn
 
 
 def play(agent_dir, num_episodes, max_episode_steps, save_videos):

@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from interact.agents.base import Agent
 from interact.agents.utils import get_agent
-from interact.environments.utils import make_env_fn
+from interact.environments import make_env_fn
 from interact.logging import Logger
 
 
