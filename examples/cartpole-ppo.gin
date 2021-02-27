@@ -14,4 +14,4 @@ ppo.ent_coef = 0.001
 ppo.nminibatches = 1
 ppo.noptepochs = 20
 
-mlp.units = (32, 32)
+mlp.hidden_units = (32, 32)

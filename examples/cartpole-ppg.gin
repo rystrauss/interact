@@ -14,4 +14,4 @@ ppg.ent_coef = 0.001
 ppg.nminibatches = 1
 ppg.policy_iterations = 8
 
-mlp.units = (32, 32)
+mlp.hidden_units = (32, 32)
