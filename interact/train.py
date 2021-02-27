@@ -1,6 +1,7 @@
 import os
 from collections import deque
 from datetime import datetime
+from typing import Optional
 
 import click
 import gin
@@ -20,22 +21,27 @@ def train(
     agent: str = gin.REQUIRED,
     env_id: str = gin.REQUIRED,
     total_timesteps: int = gin.REQUIRED,
-    log_dir: str = None,
+    log_dir: Optional[str] = None,
     log_interval: int = 1,
-    save_interval: int = None,
-    save_at_end: bool = False,
+    save_interval: Optional[int] = None,
+    save_at_end: bool = True,
     verbose=True,
 ) -> Agent:
     """Trains an agent by repeatedly executing its `train` method.
 
     Args:
         agent: The type of agent to train.
-        env_id: The ID of the environment to train in. Should be a registered Gym environment.
-        total_timesteps: The total number of environment timesteps for which the agent should be trained.
-        log_dir: The directory to which the agent and training information should be saved.
-        log_interval: The frequency, in terms of calls to the agent's `train` method, with which logs should be saved.
-        save_interval: The frequency, in terms of calls to the agent's `train` method, with which model weights
-            should be saved.
+        env_id: The ID of the environment to train in. Should be a registered Gym
+            environment.
+        total_timesteps: The total number of environment timesteps for which the agent
+            should be trained.
+        log_dir: The directory to which the agent and training information should be
+            saved.
+        log_interval: The frequency, in terms of calls to the agent's `train` method,
+            with which logs should be saved.
+        save_interval: The frequency, in terms of calls to the agent's `train` method,
+            with which model weights should be saved.
+        save_at_end: If true, agent weights will be saved at the end of training.
         verbose: A boolean indicating whether or not to display a training progress bar.
 
     Returns:
