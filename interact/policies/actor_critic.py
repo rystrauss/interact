@@ -15,15 +15,16 @@ layers = tf.keras.layers
 class ActorCriticPolicy(Policy):
     """A generic implementation of an Actor-Critic policy.
 
-    This policy encapsulates both an actor network (for the policy) and critic network (for the value function),
-    which optionally share weights.
+    This policy encapsulates both an actor network (for the policy) and critic network
+    (for the value function), which optionally share weights.
 
     Args:
         observation_space: The observation space of this policy.
         action_space: The action space of this policy.
-        base_model_fn: A function which returns the model to be used as the base for the policy and value functions.
-        value_network: Either 'shared' or 'copy', indicating whether or not the value function should share weights
-            with the policy.
+        base_model_fn: A function which returns the model to be used as the base for
+            the policy and value functions.
+        value_network: Either 'shared' or 'copy', indicating whether or not the value
+            function should share weights with the policy.
     """
 
     def __init__(

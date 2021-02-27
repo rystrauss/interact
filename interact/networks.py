@@ -1,4 +1,4 @@
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Union, List, Tuple
 
 import gin
 import tensorflow as tf
@@ -12,7 +12,7 @@ _mapping = {}
 
 
 def register(name):
-    """Decorator that registers a network type so it can be accessed through the command line interface."""
+    """Registers a network type so it can be accessed through the CLI."""
 
     def _thunk(func):
         _mapping[name] = func
@@ -45,24 +45,26 @@ def build_network_fn(
 @gin.configurable(name_or_fn="mlp", blacklist=["input_shape"])
 @register("mlp")
 def build_mlp(
-    input_shape: TensorShape, units: Iterable[int] = (64, 64), activation: str = "relu"
+    input_shape: TensorShape,
+    hidden_units: Union[List[int], Tuple[int]] = (64, 64),
+    activation: str = "relu",
 ) -> tf.keras.Model:
     """Build a fully-connected feed-forward network, or multilayer-perceptron.
 
     Args:
         input_shape: The network's input shape.
-        units: An iterable of integers where the ith number is the number of units
-            in the ith hidden layer.
+        hidden_units: An iterable of integers where the ith number is the number of
+            units in the ith hidden layer.
         activation: The activation function to be used in the network.
 
     Returns:
         The specified MLP, as a `tf.keras.Model`.
     """
-    assert len(units) > 0, "there must be at least one hidden layer"
+    assert len(hidden_units) > 0, "there must be at least one hidden layer"
 
     layers = [Flatten(input_shape=input_shape)]
 
-    for n in units:
+    for n in hidden_units:
         layers.append(
             Dense(n, activation=activation, kernel_initializer=NormcInitializer())
         )
@@ -73,7 +75,9 @@ def build_mlp(
 @gin.configurable(name_or_fn="cnn", blacklist=["input_shape"])
 @register("cnn")
 def build_nature_cnn(
-    input_shape: TensorShape, scale_inputs: bool = True, units: Iterable[int] = (512,)
+    input_shape: TensorShape,
+    scale_inputs: bool = True,
+    hidden_units: Union[List[int], Tuple[int]] = (512,),
 ) -> tf.keras.Model:
     """Builds a convolutional neural network.
 
@@ -81,10 +85,10 @@ def build_nature_cnn(
 
     Args:
         input_shape: The network's input shape.
-        scale_inputs: If True, model inputs (which are in this case assumed to be 8-bit ints) will be scaled
-            to the range [0,1] in the first layer.
-        units: An iterable of integers where the ith number is the number of units in the ith dense layer after
-            the convolutional layers.
+        scale_inputs: If True, model inputs (which are in this case assumed to be 8-bit
+            ints) will be scaled to the range [0,1] in the first layer.
+        hidden_units: An iterable of integers where the ith number is the number of
+            units in the ith dense layer after the convolutional layers.
 
     Returns:
         The specified CNN, as a `tf.keras.Model`.
@@ -99,7 +103,7 @@ def build_nature_cnn(
 
     dense_layers = [
         Dense(n, activation="relu", kernel_initializer=NormcInitializer())
-        for n in units
+        for n in hidden_units
     ]
 
     return Sequential(

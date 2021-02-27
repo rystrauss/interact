@@ -17,14 +17,15 @@ from interact.typing import TensorType
 
 
 class Worker:
-    """A worker that is responsible for executing a policy in an environment and collecting experience.
+    """Executes a policy in an environment and collects experience.
 
     Args:
-        env_fn: A function that returns a Gym environment when called. The returned environment is used to collect
-            experience.
-        policy_fn: A function that returns a Policy when called. The returned Policy is used to collect
-            experience.
-        num_envs: The number of environments to synchronously execute within this worker.
+        env_fn: A function that returns a Gym environment when called. The returned
+            environment is used to collect experience.
+        policy_fn: A function that returns a Policy when called. The returned Policy is
+            used to collect experience.
+        num_envs: The number of environments to synchronously execute within this
+            worker.
         seed: Optional seed with which to see this worker's environments.
     """
 
@@ -56,13 +57,15 @@ class Worker:
         """Executes the policy in the environment and returns the collected experience.
 
         Args:
-            num_steps: The number of environment steps to execute in each synchronous environment.
+            num_steps: The number of environment steps to execute in each synchronous
+                environment.
 
         Returns:
-            episodes: A list of `SamplesBatch`s, where each batch contains experience from a single episode
-                (each of which may or may not be a complete episode).
-            ep_infos: A list of dictionaries containing information about any episodes which were completed
-                during collection.
+            episodes: A list of `SamplesBatch`s, where each batch contains experience
+                from a single episode (each of which may or may not be a complete
+                episode).
+            ep_infos: A list of dictionaries containing information about any episodes
+                which were completed during collection.
         """
         batch = SampleBatch()
         ep_infos = []
@@ -87,6 +90,10 @@ class Worker:
                 if done:
                     self.eps_ids[i] = uuid.uuid4().int
 
+            # This ensures that terminations which occurred due to the episode time
+            # limit are not interpreted as environment terminations. This effectively
+            # implements the partial bootstrapping method described in
+            # https://arxiv.org/abs/1712.00378
             for i, info in enumerate(infos):
                 if info.get("TimeLimit.truncated", False):
                     dones[i] = False
@@ -119,15 +126,16 @@ class Worker:
 class Runner:
     """Responsible for collecting experience from an environment.
 
-    This class is uses an arbitrary number of `Worker`s to execute a policy in an environment and
-    aggregate the collected experience.
+    This class is uses an arbitrary number of `Worker`s to execute a policy in an
+    environment and aggregate the collected experience.
 
     Args:
-        env_fn: A function that returns a Gym environment when called. The returned environment is used to collect
-            experience.
-        policy_fn: A function that returns a Policy when called. The returned Policy is used to collect
-            experience.
-        num_envs_per_worker: The number of environments to synchronously execute within each worker.
+        env_fn: A function that returns a Gym environment when called. The returned
+            environment is used to collect experience.
+        policy_fn: A function that returns a Policy when called. The returned Policy is
+            used to collect experience.
+        num_envs_per_worker: The number of environments to synchronously execute within
+            each worker.
         num_workers: The number of parallel workers to use for experience collection.
         seed: Optional seed with which to see this runner's environments.
     """
@@ -158,8 +166,8 @@ class Runner:
 
         Returns:
             episodes: An `EpisodeBatch` containing the collected data.
-            ep_infos: A list of dictionaries containing information about any episodes which were completed
-                during collection.
+            ep_infos: A list of dictionaries containing information about any episodes
+                which were completed during collection.
         """
         if len(self._workers) == 1:
             episodes, ep_infos = self._workers[0].collect(num_steps, **kwargs)
