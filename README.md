@@ -22,7 +22,7 @@ pip install -e .
 ### Training
 
 An agent can be trained with the following command:
-```bash
+```
 python -m interact.train --config <path_to_config_file>
 ```
 
@@ -30,6 +30,17 @@ This package uses [Gin](https://github.com/google/gin-config) to configure exper
 be a path to a Gin config file. Algorithm-specific arguments can be found in each agent's documentation.
 
 Some example configuration files can be found in the [`examples`](examples) directory.
+
+
+### Visualizing Agents
+
+Once an agent has been trained, it can be visualized in its environment with the
+following command:
+```
+python -m interact.play --agent_dir <path/to/agent/dir>
+```
+where `<path/to/agent/dir>` is the path to the directory that contains the agent you
+want to visualize (this is the directory that was created by the training script).
 
 
 ## Implemented Algorithms

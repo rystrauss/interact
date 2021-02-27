@@ -19,7 +19,7 @@ setuptools.setup(
         'numpy',
         'tensorflow>=2.3',
         'gym',
-        'tensorflow-probability',
+        'tensorflow-probability==0.11',
         'tqdm',
         'click',
         'opencv-python',
