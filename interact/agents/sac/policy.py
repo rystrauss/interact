@@ -39,18 +39,27 @@ class SACPolicy(Policy):
         latent = self._base_model(inputs)
         logits = self._policy_fn(latent)
 
+        deterministic = kwargs.get("deterministic", False)
+
         if self._discrete:
             pi = tfd.Categorical(logits)
-            actions = pi.sample()
+            if deterministic:
+                actions = pi.mode()
+            else:
+                actions = pi.sample()
             logpacs = tf.nn.log_softmax(logits)
         else:
             means, logstds = tf.split(logits, 2, axis=-1)
             logstds = tf.clip_by_value(logstds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
 
             pi = tfd.MultivariateNormalDiag(means, tf.exp(logstds))
-            actions = pi.sample()
+            if deterministic:
+                actions = pi.mean()
+            else:
+                actions = pi.sample()
             logpacs = pi.log_prob(actions)
 
+            # Adjust loglikelihoods for squashed actions
             logpacs -= tf.reduce_sum(
                 2 * (np.log(2) - actions - tf.nn.softplus(-2 * actions)), axis=1
             )

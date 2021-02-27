@@ -25,14 +25,17 @@ class PPGAgent(Agent):
     """The Phasic Policy Gradients algorithm.
 
     Args:
-        env_fn: A function that, when called, returns an instance of the agent's environment.
+        env_fn: A function that, when called, returns an instance of the agent's
+            environment.
         policy_network: The type of model to use for the policy network.
-        value_network: Either 'copy' or 'shared', indicating whether or not weights should be shared between
-            the policy and value networks.
-        num_envs_per_worker: The number of synchronous environments to be executed in each worker.
+        value_network: Either 'copy' or 'shared', indicating whether or not weights
+            should be shared between the policy and value networks.
+        num_envs_per_worker: The number of synchronous environments to be executed in
+            each worker.
         num_workers: The number of parallel workers to use for experience collection.
-        use_critic: Whether to use critic (value estimates). Setting this to False will use 0 as baseline.
-            If this is false, the agent becomes a vanilla actor-critic method.
+        use_critic: Whether to use critic (value estimates). Setting this to False will
+            use 0 as baseline. If this is false, the agent becomes a vanilla
+            actor-critic method.
         use_gae: Whether or not to use GAE.
         lam: The lambda parameter used in GAE.
         gamma: The discount factor.
@@ -44,12 +47,14 @@ class PPGAgent(Agent):
         max_grad_norm: The maximum value for the gradient clipping.
         nminibatches: Number of training minibatches per update.
         cliprange: Clipping parameter used in the surrogate loss.
-        cliprange_schedule: The schedule for the clipping parameter, either 'constant' or 'linear'.
+        cliprange_schedule: The schedule for the clipping parameter, either 'constant'
+            or 'linear'.
         policy_iterations: The number of policy updates performed in each policy phase.
         policy_epochs: Controls the sample reuse for the policy function.
         value_epochs: Controls the sample reuse for the value function.
-        auxiliary_epochs: Controls the sample reuse during the auxiliary phase, representing the number of epochs
-            performed across all data in the replay buffer.
+        auxiliary_epochs: Controls the sample reuse during the auxiliary phase,
+            representing the number of epochs performed across all data in the replay
+            buffer.
         bc_coef: Coefficient for the behavior cloning component of the joint loss.
         nminibatches_aux: Number of training minibatches per auxiliary epoch.
     """
@@ -372,9 +377,15 @@ class PPGAgent(Agent):
                 )
 
     @tf.function
-    def act(self, obs: TensorType, state: List[TensorType] = None) -> TensorType:
+    def act(self, obs: TensorType, deterministic: bool = True) -> TensorType:
         pi, _ = self.policy(obs)
-        return pi.mode()
+
+        if deterministic:
+            actions = pi.mode()
+        else:
+            actions = pi.mean()
+
+        return actions
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
         curr_cliprange = (

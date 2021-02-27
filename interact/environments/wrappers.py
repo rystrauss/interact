@@ -59,24 +59,3 @@ class ScaleRewardsWrapper(gym.RewardWrapper):
 
     def reward(self, reward):
         return reward * self.scale
-
-
-# TODO: Potentially remove this.
-class NormalizedActionsWrapper(gym.ActionWrapper):
-    def action(self, action):
-        if not isinstance(self.action_space, gym.spaces.Box):
-            return action
-
-        lb, ub = self.action_space.low, self.action_space.high
-        scaled_action = lb + (action + 1.0) * 0.5 * (ub - lb)
-        scaled_action = np.clip(scaled_action, lb, ub)
-        return scaled_action
-
-    def reverse_action(self, action):
-        if not isinstance(self.action_space, gym.spaces.Box):
-            return action
-
-        lb, ub = self.action_space.low, self.action_space.high
-        scaled_action = (action - lb) * 2 / (ub - lb) - 1
-        scaled_action = np.clip(scaled_action, -1.0, 1.0)
-        return scaled_action

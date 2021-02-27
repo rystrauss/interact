@@ -141,9 +141,16 @@ class DQNAgent(Agent):
         return {"loss": loss}
 
     @tf.function
-    def act(self, obs: TensorType, state: List[TensorType] = None) -> TensorType:
+    def act(self, obs: TensorType, deterministic: bool = True) -> TensorType:
         q_values = self.policy(obs)
-        return tf.argmax(q_values, axis=-1).numpy()
+
+        if deterministic:
+            actions = tf.argmax(q_values, axis=-1)
+        else:
+            # TODO: Test this.
+            actions = tf.random.categorical(q_values, 1)
+
+        return actions
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
         # Get the current value of epsilon for exploration

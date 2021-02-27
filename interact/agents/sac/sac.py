@@ -26,12 +26,14 @@ class SACAgent(Agent):
     TODO: Add support for prioritized experience replay.
 
     Args:
-        env_fn: A function that, when called, returns an instance of the agent's environment.
+        env_fn: A function that, when called, returns an instance of the agent's
+            environment.
         network: Base network type to be used by the policy and Q-functions.
         actor_lr: Learning rate to use for updating the actor.
         critic_lr: Learning rate to use for updating the critics.
         entropy_lr: Learning rate to use for tuning the entropy parameter.
-        learning_starts: Number of timesteps to only collect experience before learning starts.
+        learning_starts: Number of timesteps to only collect experience before learning
+            starts.
         tau: Parameter for the polyak averaging used to update the target networks.
         target_update_interval: Frequency with which the target Q-networks are updated.
         initial_alpha: The initial value of the entropy parameter.
@@ -41,9 +43,11 @@ class SACAgent(Agent):
         gamma: The discount factor.
         buffer_size: The maximum size of the replay buffer.
         train_freq: The frequency with which training updates are performed.
-        batch_size: The size of batches sampled from the replay buffer over which updates are performed.
+        batch_size: The size of batches sampled from the replay buffer over which
+            updates are performed.
         num_workers: The number of parallel workers to use for experience collection.
-        num_envs_per_worker: The number of synchronous environments to be executed in each worker.
+        num_envs_per_worker: The number of synchronous environments to be executed in
+            each worker.
     """
 
     def __init__(
@@ -127,12 +131,8 @@ class SACAgent(Agent):
         return self.num_envs_per_worker * self.num_workers
 
     @tf.function
-    def act(self, obs: TensorType, state: List[TensorType] = None) -> TensorType:
-        # TODO: Make this deterministic.
-        return self.policy(obs)[0]
-
-    @tf.function
     def _continuous_update(self, obs, actions, rewards, dones, next_obs):
+        # UPDATE CRITIC
         next_actions, next_logpacs = self.policy(next_obs)
 
         q_targets = tf.minimum(*self.target_q_network([next_obs, next_actions]))
@@ -152,11 +152,11 @@ class SACAgent(Agent):
             zip(grads, self.q_network.trainable_variables)
         )
 
+        # UPDATE POLICY
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self.policy.trainable_variables)
 
             pi, logpacs = self.policy(obs)
-            # TODO: Figure out why Q-values are so extreme.
             q_targets = tf.minimum(*self.q_network([obs, pi]))
 
             actor_loss = tf.reduce_mean(self.alpha * logpacs - q_targets)
@@ -166,6 +166,7 @@ class SACAgent(Agent):
             zip(grads, self.policy.trainable_variables)
         )
 
+        # UPDATE ALPHA
         if self.learn_alpha:
             with tf.GradientTape() as tape:
                 alpha_loss = -tf.reduce_mean(
@@ -186,6 +187,7 @@ class SACAgent(Agent):
 
     @tf.function
     def _discrete_update(self, obs, actions, rewards, dones, next_obs):
+        # UPDATE CRITIC
         _, next_logpacs = self.policy(next_obs)
 
         q_targets = tf.minimum(*self.target_q_network(next_obs))
@@ -210,6 +212,7 @@ class SACAgent(Agent):
             zip(grads, self.q_network.trainable_variables)
         )
 
+        # UPDATE POLICY
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self.policy.trainable_variables)
 
@@ -232,6 +235,7 @@ class SACAgent(Agent):
             zip(grads, self.policy.trainable_variables)
         )
 
+        # UPDATE ALPHA
         if self.learn_alpha:
             with tf.GradientTape() as tape:
                 alpha_loss = tf.reduce_mean(
@@ -258,6 +262,7 @@ class SACAgent(Agent):
 
     @tf.function
     def _update_target(self):
+        """Perform Polyak averaging of the target network."""
         for target_var, q_var in zip(
             self.target_q_network.variables, self.q_network.variables
         ):
@@ -294,9 +299,15 @@ class SACAgent(Agent):
 
         return metrics
 
+    @tf.function
+    def act(self, obs: TensorType, deterministic: bool = True) -> TensorType:
+        return self.policy(obs, deterministic=deterministic)[0]
+
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
         episodes, ep_infos = self.runner.run(
             1,
+            # In the beginning, randomly select actions from a uniform distribution
+            # for better exploration.
             uniform_sample=(
                 update * self.timesteps_per_iteration <= self.learning_starts
             ),

@@ -61,6 +61,7 @@ def make_env_fn(
         env_id: The ID of the environment to be created by the returned function.
         seed: An optional seed to seed the returned environment with.
         reward_scale: Factor by which rewards should be scaled.
+        episode_time_limit: The maximum number of steps that an episode can last.
 
     Returns:
         A function that returns a new instance of the requested environment when called.

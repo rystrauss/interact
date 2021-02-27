@@ -9,6 +9,7 @@ from interact.agents.utils import register
 from interact.experience.postprocessing import AdvantagePostprocessor
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
+from interact.typing import TensorType
 from interact.utils.math_utils import explained_variance
 from interact.networks import build_network_fn
 from interact.policies.actor_critic import ActorCriticPolicy
@@ -137,9 +138,15 @@ class A2CAgent(Agent):
         }
 
     @tf.function
-    def act(self, obs, state=None):
+    def act(self, obs: TensorType, deterministic: bool = True) -> TensorType:
         pi, _ = self.policy(obs)
-        return pi.mode()
+
+        if deterministic:
+            actions = pi.mode()
+        else:
+            actions = pi.mean()
+
+        return actions
 
     def setup(self, total_timesteps):
         if self.lr_schedule == "linear":
