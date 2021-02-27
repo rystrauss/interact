@@ -9,10 +9,18 @@ from interact.tests.mock_policy import MockPolicy
 
 @pytest.fixture
 def cartpole_runner():
-    np.random.seed(91)
     env_fn = make_env_fn("CartPole-v1")
     env = env_fn()
-    policy_fn = lambda: MockPolicy(env.observation_space, env.action_space)
+    policy_fn = lambda: MockPolicy(91, env.observation_space, env.action_space)
+
+    return Runner(env_fn, policy_fn, seed=91)
+
+
+@pytest.fixture
+def time_limit_cartpole_runner():
+    env_fn = make_env_fn("CartPole-v1", episode_time_limit=8)
+    env = env_fn()
+    policy_fn = lambda: MockPolicy(91, env.observation_space, env.action_space)
 
     return Runner(env_fn, policy_fn, seed=91)
 
@@ -71,3 +79,23 @@ def test_run(cartpole_runner):
 
     assert episodes[0][SampleBatch.DONES][-1] == 1
     assert episodes[1][SampleBatch.DONES][-1] == 0
+
+
+def test_time_limit(cartpole_runner, time_limit_cartpole_runner):
+    episodes, ep_infos = cartpole_runner.run(15)
+    time_limit_episodes, ep_infos = time_limit_cartpole_runner.run(15)
+
+    np.testing.assert_equal(
+        episodes[0][SampleBatch.OBS][:8], time_limit_episodes[0][SampleBatch.OBS]
+    )
+
+    np.testing.assert_equal(
+        episodes[0][SampleBatch.OBS][8],
+        time_limit_episodes[0][SampleBatch.NEXT_OBS][-1],
+    )
+
+    np.testing.assert_equal(
+        episodes[1][SampleBatch.OBS][0], time_limit_episodes[1][SampleBatch.OBS][0]
+    )
+
+    assert not time_limit_episodes[0][SampleBatch.DONES][-1]

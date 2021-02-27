@@ -46,9 +46,12 @@ def get_env_type(env_id: str) -> str:
     return env_type
 
 
-@gin.configurable("env", whitelist=["reward_scale"])
+@gin.configurable("env", blacklist=["env_id", "seed"])
 def make_env_fn(
-    env_id: str, seed: int = None, reward_scale: float = None
+    env_id: str,
+    seed: int = None,
+    reward_scale: float = None,
+    episode_time_limit: int = None,
 ) -> Callable[[], gym.Env]:
     """Returns a function that constructs the given environment when called.
 
@@ -66,6 +69,10 @@ def make_env_fn(
 
     def _env_fn():
         env = gym.make(env_id)
+
+        if episode_time_limit is not None:
+            env._max_episode_steps = episode_time_limit
+
         if seed is not None:
             env.seed(seed)
 

@@ -124,7 +124,7 @@ class SACAgent(Agent):
 
     @property
     def timesteps_per_iteration(self) -> int:
-        return self.num_workers * self.num_envs_per_worker
+        return self.num_envs_per_worker * self.num_workers
 
     @tf.function
     def act(self, obs: TensorType, state: List[TensorType] = None) -> TensorType:
@@ -156,6 +156,7 @@ class SACAgent(Agent):
             tape.watch(self.policy.trainable_variables)
 
             pi, logpacs = self.policy(obs)
+            # TODO: Figure out why Q-values are so extreme.
             q_targets = tf.minimum(*self.q_network([obs, pi]))
 
             actor_loss = tf.reduce_mean(self.alpha * logpacs - q_targets)
@@ -173,6 +174,8 @@ class SACAgent(Agent):
 
             grads = tape.gradient(alpha_loss, [self.log_alpha])
             self.alpha_optimizer.apply_gradients(zip(grads, [self.log_alpha]))
+        else:
+            alpha_loss = 0.0
 
         return {
             "critic_loss": critic_loss,
@@ -184,7 +187,6 @@ class SACAgent(Agent):
     @tf.function
     def _discrete_update(self, obs, actions, rewards, dones, next_obs):
         _, next_logpacs = self.policy(next_obs)
-        next_logpacs = tf.nn.log_softmax(next_logpacs)
 
         q_targets = tf.minimum(*self.target_q_network(next_obs))
         q_targets = tf.reduce_sum(
@@ -212,7 +214,6 @@ class SACAgent(Agent):
             tape.watch(self.policy.trainable_variables)
 
             pi, logpacs = self.policy(obs)
-            logpacs = tf.nn.log_softmax(logpacs)
 
             q_values = tf.minimum(*self.q_network(obs))
 
@@ -245,6 +246,8 @@ class SACAgent(Agent):
 
             grads = tape.gradient(alpha_loss, [self.log_alpha])
             self.alpha_optimizer.apply_gradients(zip(grads, [self.log_alpha]))
+        else:
+            alpha_loss = 0.0
 
         return {
             "critic_loss": critic_loss,
@@ -258,10 +261,46 @@ class SACAgent(Agent):
         for target_var, q_var in zip(
             self.target_q_network.variables, self.q_network.variables
         ):
-            target_var.assign(self.tau * target_var + (1 - self.tau) * q_var)
+            target_var.assign(self.tau * q_var + (1 - self.tau) * target_var)
+
+    def _update(self, update, sample):
+        metrics = dict()
+        if self._discrete:
+            metrics.update(
+                self._discrete_update(
+                    sample[SampleBatch.OBS],
+                    sample[SampleBatch.ACTIONS],
+                    sample[SampleBatch.REWARDS],
+                    sample[SampleBatch.DONES],
+                    sample[SampleBatch.NEXT_OBS],
+                )
+            )
+        else:
+            metrics.update(
+                self._continuous_update(
+                    sample[SampleBatch.OBS],
+                    sample[SampleBatch.ACTIONS],
+                    sample[SampleBatch.REWARDS],
+                    sample[SampleBatch.DONES],
+                    sample[SampleBatch.NEXT_OBS],
+                )
+            )
+
+        if update % self.target_update_interval == 0:
+            self._update_target()
+
+        if self.num_workers != 1:
+            self.runner.update_policies(self.policy.get_weights())
+
+        return metrics
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
-        episodes, ep_infos = self.runner.run(1)
+        episodes, ep_infos = self.runner.run(
+            1,
+            uniform_sample=(
+                update * self.timesteps_per_iteration <= self.learning_starts
+            ),
+        )
 
         self.buffer.add(episodes.to_sample_batch())
 
@@ -272,31 +311,10 @@ class SACAgent(Agent):
         ):
             sample = self.buffer.sample(self.batch_size)
 
-            if self._discrete:
-                metrics.update(
-                    self._discrete_update(
-                        sample[SampleBatch.OBS],
-                        sample[SampleBatch.ACTIONS],
-                        sample[SampleBatch.REWARDS],
-                        sample[SampleBatch.DONES],
-                        sample[SampleBatch.NEXT_OBS],
-                    )
-                )
-            else:
-                metrics.update(
-                    self._continuous_update(
-                        sample[SampleBatch.OBS],
-                        sample[SampleBatch.ACTIONS],
-                        sample[SampleBatch.REWARDS],
-                        sample[SampleBatch.DONES],
-                        sample[SampleBatch.NEXT_OBS],
-                    )
-                )
-
-            if update % self.target_update_interval == 0:
-                self._update_target()
-
-            if self.num_workers != 1:
-                self.runner.update_policies(self.policy.get_weights())
+            metrics.update(self._update(update, sample))
 
         return metrics, ep_infos
+
+    def setup(self, total_timesteps: int):
+        # Make sure policy weights are created
+        self.policy([np.random.normal(size=(1, *self.policy.observation_space.shape))])

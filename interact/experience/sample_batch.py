@@ -48,14 +48,14 @@ class SampleBatch:
     def is_finished(self):
         return self._finished
 
-    def add(self, **kwargs):
+    def add(self, data):
         """Adds data to this batch."""
         if self._finished:
             raise RuntimeError(
                 "Cannot add to a trajectory that has already been finished."
             )
 
-        for key, value in kwargs.items():
+        for key, value in data.items():
             if key not in self._data:
                 self._data[key] = []
 
@@ -127,7 +127,7 @@ class SampleBatch:
             )
             yield minibatch
 
-    def shuffle(self) -> "SampleBatch":
+    def shuffle(self, seed=None) -> "SampleBatch":
         """Shuffles the data in the batch while being consistent across keys.
 
         Returns:
@@ -140,7 +140,7 @@ class SampleBatch:
             s == sizes[0] for s in sizes
         ), "All values in the sample batch must have the same length in order to shuffle."
 
-        inds = np.random.permutation(sizes[0])
+        inds = np.random.RandomState(seed).permutation(sizes[0])
         for key, value in self._data.items():
             self._data[key] = value[inds]
 

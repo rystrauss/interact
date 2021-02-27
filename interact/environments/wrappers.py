@@ -15,20 +15,21 @@ class MonitorEpisodeWrapper(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
 
-        self.rewards = None
+        self._reward = 0
+        self._ep_length = 0
 
     def reset(self, **kwargs):
-        self.rewards = []
+        self._reward = 0.0
+        self._ep_length = 0
         return self.env.reset(**kwargs)
 
     def step(self, action):
         observation, reward, done, info = self.env.step(action)
-        self.rewards.append(reward)
+        self._reward += reward
+        self._ep_length += 1
 
         if done:
-            ep_rew = sum(self.rewards)
-            eplen = len(self.rewards)
-            ep_info = {"reward": round(ep_rew, 6), "length": eplen}
+            ep_info = {"reward": round(self._reward, 6), "length": self._ep_length}
             info["episode"] = ep_info
 
         return observation, reward, done, info
@@ -60,6 +61,7 @@ class ScaleRewardsWrapper(gym.RewardWrapper):
         return reward * self.scale
 
 
+# TODO: Potentially remove this.
 class NormalizedActionsWrapper(gym.ActionWrapper):
     def action(self, action):
         if not isinstance(self.action_space, gym.spaces.Box):

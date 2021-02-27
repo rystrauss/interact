@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import numpy as np
 import pytest
 
@@ -19,28 +21,23 @@ def unfinished_batch():
             SampleBatch.EPS_ID: [eps_id, eps_id + 1],
         }
 
-        batch.add(**data)
+        batch.add(data)
 
         done = i == 12
 
         if done:
             eps_id += 2
 
-        batch.add(
-            **{
-                SampleBatch.DONES: [done, done],
-            }
-        )
+        batch.add({SampleBatch.DONES: [done, done]})
 
     return batch
 
 
 @pytest.fixture
 def cartpole_episode_batch():
-    np.random.seed(91)
     env_fn = make_env_fn("CartPole-v1")
     env = env_fn()
-    policy_fn = lambda: MockPolicy(env.observation_space, env.action_space)
+    policy_fn = lambda: MockPolicy(91, env.observation_space, env.action_space)
 
     runner = Runner(env_fn, policy_fn, seed=91)
     episodes, _ = runner.run(15)
@@ -61,11 +58,9 @@ def test_extract_episodes(unfinished_batch):
 def test_shuffle(cartpole_episode_batch):
     batch = cartpole_episode_batch[0].to_sample_batch()
 
-    i = np.argmax(batch[SampleBatch.DONES])
-    expected_obs = batch[SampleBatch.OBS][i]
+    inds = np.random.RandomState(91).permutation(15)
+    shuffled_batch = deepcopy(batch)
+    shuffled_batch.shuffle(91)
 
-    batch.shuffle()
-    j = np.argmax(batch[SampleBatch.DONES])
-
-    np.testing.assert_equal(expected_obs, batch[SampleBatch.OBS][j])
-    assert i != j
+    for k in batch.keys():
+        np.testing.assert_equal(batch[k][inds], shuffled_batch[k])

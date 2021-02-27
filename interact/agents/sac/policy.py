@@ -42,7 +42,7 @@ class SACPolicy(Policy):
         if self._discrete:
             pi = tfd.Categorical(logits)
             actions = pi.sample()
-            logpacs = logits
+            logpacs = tf.nn.log_softmax(logits)
         else:
             means, logstds = tf.split(logits, 2, axis=-1)
             logstds = tf.clip_by_value(logstds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
@@ -65,8 +65,19 @@ class SACPolicy(Policy):
     def _step(
         self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
     ) -> Dict[str, Union[float, np.ndarray]]:
-        actions, logpacs = self.call(obs)
-        return {SampleBatch.ACTIONS: actions, SampleBatch.ACTION_LOGP: logpacs}
+        if kwargs.get("uniform_sample", False):
+            if self._discrete:
+                actions = tf.random.uniform(
+                    [len(obs)], 0, self.action_space.n, dtype=tf.int32
+                )
+            else:
+                actions = tf.random.uniform(
+                    [len(obs)], self.action_space.low, self.action_space.high
+                )
+                actions = tf.reshape(actions, [len(obs), -1])
+        else:
+            actions, _ = self.call(obs)
+        return {SampleBatch.ACTIONS: actions}
 
 
 class SACQFunction(layers.Layer):

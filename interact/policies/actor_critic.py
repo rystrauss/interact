@@ -53,6 +53,7 @@ class ActorCriticPolicy(Policy):
             self._policy_fn = layers.Dense(
                 action_space.shape[0], kernel_initializer=NormcInitializer(0.01)
             )
+            # TODO: Make this optional.
             self._policy_logstds = self.add_weight(
                 "policy_logstds",
                 shape=(action_space.shape[0],),

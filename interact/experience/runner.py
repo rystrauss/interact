@@ -8,8 +8,8 @@ import numpy as np
 import ray
 from gym import Env
 from gym.spaces import Box
-from gym.vector import SyncVectorEnv
 
+from interact.environments.vector_env import VectorEnv
 from interact.experience.episode_batch import EpisodeBatch
 from interact.experience.sample_batch import SampleBatch
 from interact.policies.base import Policy
@@ -35,19 +35,15 @@ class Worker:
         num_envs: int = 1,
         seed: int = None,
     ):
-        self.env = SyncVectorEnv([env_fn] * num_envs)
+        self.env = VectorEnv([env_fn] * num_envs)
 
         if seed is None:
             seed = int.from_bytes(os.urandom(4), byteorder="big")
         self.env.seed(seed)
+        self.env.reset()
 
         self.policy = policy_fn()
 
-        self.obs = np.zeros(
-            self.env.observation_space.shape, dtype=self.env.observation_space.dtype
-        )
-        self.obs[:] = self.env.reset()
-        self.dones = [False for _ in range(self.env.num_envs)]
         self.eps_ids = [uuid.uuid4().int for _ in range(self.env.num_envs)]
 
     @classmethod
@@ -72,12 +68,10 @@ class Worker:
         ep_infos = []
 
         for _ in range(num_steps):
-            data = self.policy.step(self.obs, **kwargs)
+            data = self.policy.step(self.env.observations, **kwargs)
 
-            data[SampleBatch.OBS] = self.obs.copy()
+            data[SampleBatch.OBS] = self.env.observations.copy()
             data[SampleBatch.EPS_ID] = copy.copy(self.eps_ids)
-
-            batch.add(**data)
 
             clipped_actions = np.asarray(data[SampleBatch.ACTIONS])
             if isinstance(self.env.action_space, Box):
@@ -87,19 +81,21 @@ class Worker:
                     self.env.action_space.high,
                 )
 
-            self.obs[:], rewards, self.dones, infos = self.env.step(clipped_actions)
+            next_obs, rewards, dones, infos = self.env.step(clipped_actions)
 
-            for i, done in enumerate(self.dones):
+            for i, done in enumerate(dones):
                 if done:
                     self.eps_ids[i] = uuid.uuid4().int
 
-            batch.add(
-                **{
-                    SampleBatch.REWARDS: rewards,
-                    SampleBatch.DONES: self.dones,
-                    SampleBatch.NEXT_OBS: self.obs.copy(),
-                }
-            )
+            for i, info in enumerate(infos):
+                if info.get("TimeLimit.truncated", False):
+                    dones[i] = False
+                    next_obs[i] = info.pop("TimeLimit.next_obs")
+
+            data[SampleBatch.REWARDS] = rewards
+            data[SampleBatch.DONES] = dones
+            data[SampleBatch.NEXT_OBS] = next_obs
+            batch.add(data)
 
             for info in infos:
                 maybe_ep_info = info.get("episode")

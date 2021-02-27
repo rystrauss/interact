@@ -15,9 +15,9 @@ class EpisodeBatch:
     """
 
     def __init__(self, **kwargs):
-        if not kwargs.get("internal"):
+        if not kwargs.get("_internal"):
             raise ValueError(
-                "This class is only meant to be directly instantiated internally."
+                "This class is not meant to be directly instantiated."
             )
 
         self._episodes = kwargs.get("episodes")
@@ -38,7 +38,7 @@ class EpisodeBatch:
         Returns:
             A new EpisodeBatch.
         """
-        return cls(episodes=episodes, internal=True)
+        return cls(episodes=episodes, _internal=True)
 
     @staticmethod
     def merge(episodes_batches: List["EpisodeBatch"]) -> "EpisodeBatch":

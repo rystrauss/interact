@@ -38,12 +38,12 @@ class ReplayBuffer:
                 self._storage[self._next_idx] = e
 
             # Wrap around storage as a circular buffer once we hit maxsize.
-            if self._next_idx >= self._maxsize:
+            if self._next_idx >= self._maxsize - 1:
                 self._next_idx = 0
             else:
                 self._next_idx += 1
 
-    def sample(self, num_items: int) -> SampleBatch:
+    def sample(self, num_items: int, seed=None) -> SampleBatch:
         """Sample a batch of experiences.
 
         Args:
@@ -52,7 +52,7 @@ class ReplayBuffer:
         Returns:
             SampleBatch: concatenated batch of items.
         """
-        idxes = np.random.randint(0, len(self._storage), (num_items,))
+        idxes = np.random.RandomState(seed).randint(0, len(self._storage), (num_items,))
         return SampleBatch.concat_samples([self._storage[i] for i in idxes])
 
 

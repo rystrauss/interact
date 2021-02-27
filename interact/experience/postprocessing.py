@@ -125,7 +125,7 @@ class AdvantagePostprocessor(Postprocessor):
 
     def __init__(
         self,
-        policy: Policy,
+        policy: Policy,  # TODO: Switch to value_fn.
         gamma: float = 0.99,
         lam: float = 0.95,
         use_gae: bool = True,
