@@ -274,7 +274,11 @@ class PPGAgent(Agent):
 
             episodes.for_each(
                 AdvantagePostprocessor(
-                    self.policy, self.gamma, self.lam, self.use_gae, self.use_critic
+                    self.policy.value,
+                    self.gamma,
+                    self.lam,
+                    self.use_gae,
+                    self.use_critic,
                 )
             )
             experience_buffer.append(episodes)

@@ -1,13 +1,13 @@
 from abc import ABC, abstractmethod
+from typing import Callable
 
 import numpy as np
 from scipy import signal
 
 from interact.experience.sample_batch import SampleBatch
-from interact.policies.base import Policy
-
 
 # TODO: Add option to normalize observations/rewards.
+from interact.typing import TensorType
 
 
 def discount_cumsum(x: np.ndarray, gamma: float) -> float:
@@ -44,7 +44,8 @@ def compute_advantages(
         gamma: Discount factor.
         lambda: Parameter for GAE.
         use_gae: Using Generalized Advantage Estimation.
-        use_critic: Whether to use critic (value estimates). Setting this to False will use 0 as baseline.
+        use_critic: Whether to use critic (value estimates). Setting this to False will
+            use 0 as baseline.
 
     Returns:
         The modified SampleBatch which has been updated with advantages.
@@ -93,7 +94,7 @@ def compute_advantages(
 
 
 class Postprocessor(ABC):
-    """An abstract class representing a postprocessing transformation that can be applied to a `SampleBatch`."""
+    """An abstract class representing a postprocessing transformation."""
 
     @abstractmethod
     def apply(self, episode: SampleBatch):
@@ -116,22 +117,24 @@ class AdvantagePostprocessor(Postprocessor):
     Generalized Advantage Estimation can optionally be used to compute advantages.
 
     Args:
-        policy: A Policy to be used to calculate bootstrapping value estimates. This Policy must have a `value` method.
+        value_fn: A function that take observations as input and returns the
+            corresponding value estimates. This is used for bootstrapping.
         gamma: The discount factor.
         lam: The lambda parameter used in GAE.
         use_gae: Whether or not to use GAE.
-        use_critic: Whether to use critic (value estimates). Setting this to False will use 0 as baseline.
+        use_critic: Whether to use critic (value estimates). Setting this to False will
+            use 0 as baseline.
     """
 
     def __init__(
         self,
-        policy: Policy,  # TODO: Switch to value_fn.
+        value_fn: Callable[[TensorType], TensorType],
         gamma: float = 0.99,
         lam: float = 0.95,
         use_gae: bool = True,
         use_critic: bool = True,
     ):
-        self.policy = policy
+        self.value_fn = value_fn
         self.gamma = gamma
         self.lam = lam
         self.use_gae = use_gae
@@ -141,9 +144,7 @@ class AdvantagePostprocessor(Postprocessor):
         if episode[SampleBatch.DONES][-1]:
             last_r = 0.0
         else:
-            last_r = np.asarray(
-                self.policy.value(episode[SampleBatch.NEXT_OBS][-1:])[0]
-            )
+            last_r = np.asarray(self.value_fn(episode[SampleBatch.NEXT_OBS][-1:])[0])
 
         compute_advantages(
             episode, last_r, self.gamma, self.lam, self.use_gae, self.use_critic
