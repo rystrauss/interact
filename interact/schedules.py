@@ -14,4 +14,6 @@ class LinearDecay(tf.keras.optimizers.schedules.PolynomialDecay):
     """
 
     def __init__(self, initial_learning_rate, decay_steps, end_learning_rate=0):
-        super().__init__(initial_learning_rate, decay_steps, end_learning_rate=end_learning_rate)
+        super().__init__(
+            initial_learning_rate, decay_steps, end_learning_rate=end_learning_rate
+        )

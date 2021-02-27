@@ -20,10 +20,9 @@ class Policy(ABC, tf.keras.layers.Layer):
         self.observation_space = observation_space
         self.action_space = action_space
 
-    def step(self,
-             obs: np.ndarray,
-             states: Union[np.ndarray, None] = None,
-             **kwargs) -> Dict[str, Union[float, np.ndarray]]:
+    def step(
+        self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
+    ) -> Dict[str, Union[float, np.ndarray]]:
         """Computes policy information for the given observation.
 
         Args:
@@ -36,18 +35,21 @@ class Policy(ABC, tf.keras.layers.Layer):
         """
         data = self._step(obs, states, **kwargs)
 
-        assert 'actions' in data, f'Dictionary returned by `_step` must contain the key "actions"'
+        assert (
+            "actions" in data
+        ), f'Dictionary returned by `_step` must contain the key "actions"'
         if states is not None:
-            assert 'states' in data, 'If states are provided, dictionary returned by ' \
-                                     f'`_step` must contain the key "states"'
+            assert "states" in data, (
+                "If states are provided, dictionary returned by "
+                f'`_step` must contain the key "states"'
+            )
 
         return data
 
     @abstractmethod
-    def _step(self,
-              obs: np.ndarray,
-              states: Union[np.ndarray, None] = None,
-              **kwargs) -> Dict[str, Union[float, np.ndarray]]:
+    def _step(
+        self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
+    ) -> Dict[str, Union[float, np.ndarray]]:
         """An abstract method which implements the specific behavior of `step` for child policy classes."""
         pass
 
@@ -55,10 +57,11 @@ class Policy(ABC, tf.keras.layers.Layer):
 class RandomPolicy(Policy):
     """A toy policy which takes random actions."""
 
-    def _step(self,
-              obs: np.ndarray,
-              states: Union[np.ndarray, None] = None,
-              **kwargs) -> Dict[str, Union[float, np.ndarray, List]]:
+    def _step(
+        self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
+    ) -> Dict[str, Union[float, np.ndarray, List]]:
         return {
-            SampleBatch.ACTIONS: np.array([self.action_space.sample() for _ in range(len(obs))]),
+            SampleBatch.ACTIONS: np.array(
+                [self.action_space.sample() for _ in range(len(obs))]
+            ),
         }

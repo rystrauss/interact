@@ -1,0 +1,6 @@
+train.agent = 'sac'
+train.env_id = 'Pendulum-v0'
+train.total_timesteps = 100000
+train.log_interval = 100
+
+mlp.hidden_units = (256, 256)
