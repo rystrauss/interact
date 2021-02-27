@@ -217,7 +217,6 @@ class SACAgent(Agent):
             tape.watch(self.policy.trainable_variables)
 
             pi, logpacs = self.policy(obs)
-
             q_values = tf.minimum(*self.q_network(obs))
 
             actor_loss = tf.reduce_mean(
@@ -242,7 +241,8 @@ class SACAgent(Agent):
                     tf.reduce_sum(
                         tf.multiply(
                             tf.exp(logpacs),
-                            -self.log_alpha * (logpacs + self.target_entropy),
+                            -self.log_alpha
+                            * tf.stop_gradient(logpacs + self.target_entropy),
                         ),
                         axis=-1,
                     )
