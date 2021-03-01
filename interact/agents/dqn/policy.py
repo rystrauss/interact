@@ -14,7 +14,7 @@ from interact.utils.math_utils import NormcInitializer
 layers = tf.keras.layers
 
 
-@gin.configurable("qnetwork", whitelist=["dueling", "dueling_units"])
+@gin.configurable("qnetwork", whitelist=["dueling", "dueling_hidden_units"])
 class QNetwork(tf.keras.Model):
     """A `tf.keras.Model` version of a Q-Network.
 
@@ -25,8 +25,8 @@ class QNetwork(tf.keras.Model):
         action_space: The action space of this policy.
         network: The type of network to use (e.g. 'cnn', 'mlp').
         dueling: A boolean indicating whether or not to use the dueling architecture.
-        dueling_units: The number of hidden units in the first layer of each stream in
-            the dueling network. Only applicable if `dueling` is True.
+        dueling_hidden_units: The number of hidden units in the first layer of each
+            stream in the dueling network. Only applicable if `dueling` is True.
     """
 
     def __init__(
@@ -35,7 +35,7 @@ class QNetwork(tf.keras.Model):
         action_space: gym.Space,
         network: str,
         dueling: bool = False,
-        dueling_units: int = 64,
+        dueling_hidden_units: int = 64,
     ):
         assert isinstance(
             action_space, gym.spaces.Discrete
@@ -46,14 +46,18 @@ class QNetwork(tf.keras.Model):
 
         if dueling:
             value_stream = layers.Dense(
-                dueling_units, activation="relu", kernel_initializer=NormcInitializer()
+                dueling_hidden_units,
+                activation="relu",
+                kernel_initializer=NormcInitializer(),
             )(h)
             value_stream = layers.Dense(1, kernel_initializer=NormcInitializer(0.01))(
                 value_stream
             )
 
             advantage_stream = layers.Dense(
-                dueling_units, activation="relu", kernel_initializer=NormcInitializer()
+                dueling_hidden_units,
+                activation="relu",
+                kernel_initializer=NormcInitializer(),
             )(h)
             advantage_stream = layers.Dense(
                 action_space.n, kernel_initializer=NormcInitializer(0.01)
@@ -91,6 +95,7 @@ class DQNPolicy(Policy):
 
         self.q_network = QNetwork(observation_space, action_space, network)
         self.target_network = QNetwork(observation_space, action_space, network)
+        self.target_network.trainable = False
 
     @tf.function
     def call(self, inputs, **kwargs):

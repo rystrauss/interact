@@ -20,6 +20,7 @@ class Policy(ABC, tf.keras.layers.Layer):
         self.observation_space = observation_space
         self.action_space = action_space
 
+    # TODO: Remove states.
     def step(
         self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
     ) -> Dict[str, Union[float, np.ndarray]]:
@@ -46,6 +47,7 @@ class Policy(ABC, tf.keras.layers.Layer):
 
         return data
 
+    # TODO: Remove states.
     @abstractmethod
     def _step(
         self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs

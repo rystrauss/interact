@@ -18,7 +18,7 @@ def play(agent_dir, num_episodes, max_episode_steps, save_videos):
     )
     agent.setup(gin.query_parameter("train.total_timesteps"))
 
-    ckpt_path = tf.train.latest_checkpoint(os.path.join(agent_dir, "checkpoints"))
+    ckpt_path = tf.train.latest_checkpoint(os.path.join(agent_dir, "best-weights"))
     checkpoint = tf.train.Checkpoint(agent)
     checkpoint.restore(ckpt_path).expect_partial()
 

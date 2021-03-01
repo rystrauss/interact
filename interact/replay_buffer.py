@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 
 from interact.experience.sample_batch import SampleBatch
@@ -43,11 +45,12 @@ class ReplayBuffer:
             else:
                 self._next_idx += 1
 
-    def sample(self, num_items: int, seed=None) -> SampleBatch:
+    def sample(self, num_items: int, seed: Optional[int] = None) -> SampleBatch:
         """Sample a batch of experiences.
 
         Args:
             num_items: Number of items to sample from this buffer.
+            seed: Random seed.
 
         Returns:
             SampleBatch: concatenated batch of items.
@@ -110,26 +113,29 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             else:
                 self._next_idx += 1
 
-    def _sample_proportional(self, num_items: int):
+    def _sample_proportional(self, num_items: int, seed: Optional[int] = None):
         res = []
         for _ in range(num_items):
-            mass = np.random.random() * self._it_sum.sum(0, len(self._storage))
+            mass = np.random.RandomState(seed).random() * self._it_sum.sum(
+                0, len(self._storage)
+            )
             idx = self._it_sum.find_prefixsum_idx(mass)
             res.append(idx)
         return res
 
-    def sample(self, num_items: int) -> SampleBatch:
+    def sample(self, num_items: int, seed: Optional[int] = None) -> SampleBatch:
         """Sample a batch of experiences and return priority weights, indices.
 
         Args:
             num_items (int): Number of items to sample from this buffer.
+            seed: Random seed.
 
         Returns:
             SampleBatchType: Concatenated batch of items including "weights"
                 and "batch_indexes" fields denoting IS of each sampled
                 transition and original idxes in buffer of sampled experiences.
         """
-        idxes = self._sample_proportional(num_items)
+        idxes = self._sample_proportional(num_items, seed)
 
         weights = []
         batch_indexes = []

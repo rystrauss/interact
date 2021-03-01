@@ -1,4 +1,4 @@
-from typing import Tuple, Dict, List, Callable
+from typing import Tuple, Dict, List, Callable, Optional
 
 import gin
 import gym
@@ -58,7 +58,7 @@ class DQNAgent(Agent):
         final_epsilon: float = 0.02,
         epsilon_timesteps: int = 10000,
         learning_starts: int = 1000,
-        max_grad_norm: float = None,
+        max_grad_norm: Optional[float] = None,
         double: bool = True,
     ):
         super().__init__(env_fn)
@@ -92,7 +92,6 @@ class DQNAgent(Agent):
 
     @tf.function
     def _update(self, obs, actions, rewards, next_obs, dones):
-        dones = tf.cast(dones, tf.float32)
         actions = tf.cast(actions, tf.int32)
 
         # Get Q values for the observations at the next time step with the
@@ -115,7 +114,9 @@ class DQNAgent(Agent):
         # Calculate targets (Bellman equation)
         targets = rewards + self.gamma * next_q_values_best_masked
 
-        with tf.GradientTape() as tape:
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            tape.watch(self.policy.q_network.trainable_variables)
+
             # Forward pass through online Q network
             q_values = self.policy(obs)
             q_values_selected = tf.gather(q_values, actions, batch_dims=1)
@@ -127,7 +128,7 @@ class DQNAgent(Agent):
         vars = self.policy.q_network.trainable_variables
         grads = tape.gradient(loss, vars)
         # Perform gradient clipping
-        if self.max_grad_norm:
+        if self.max_grad_norm is not None:
             grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
         # Apply the gradient update
         self.optimizer.apply_gradients(zip(grads, vars))
