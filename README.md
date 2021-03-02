@@ -4,18 +4,16 @@ Interact contains implementations of several deep reinforcement learning algorit
 
 ## Installation
 
-Interact can be installed with the steps below.
+Interact can be installed as follows:
 
-* Clone the repository.
 ```bash
 git clone https://github.com/rystrauss/interact
 cd interact
+pip install .
 ```
 
-* Install the package.
-```bash
-pip install -e .
-```
+If you want to use Gym environments that aren't installed by default with Gym, you'll
+need to install those yourself (e.g. `pip install gym[atari]`).
 
 ## Usage
 
