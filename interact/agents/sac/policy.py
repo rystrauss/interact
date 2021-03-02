@@ -71,9 +71,7 @@ class SACPolicy(Policy):
         return actions, logpacs
 
     @tf.function
-    def _step(
-        self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
-    ) -> Dict[str, Union[float, np.ndarray]]:
+    def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
         if kwargs.get("uniform_sample", False):
             if self._discrete:
                 actions = tf.random.uniform(

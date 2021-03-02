@@ -86,9 +86,7 @@ class ActorCriticPolicy(Policy):
         return pi, value_preds
 
     @tf.function
-    def _step(
-        self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
-    ) -> Dict[str, Union[float, np.ndarray]]:
+    def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
         pi, value_preds = self.call(obs)
 
         actions = pi.sample()

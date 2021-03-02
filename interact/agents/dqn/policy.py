@@ -106,9 +106,7 @@ class DQNPolicy(Policy):
         self.target_network.set_weights(self.q_network.get_weights())
 
     @tf.function
-    def _step(
-        self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
-    ) -> Dict[str, Union[float, np.ndarray]]:
+    def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
         epsilon = kwargs.get("epsilon")
 
         q_values = self.q_network(obs)
