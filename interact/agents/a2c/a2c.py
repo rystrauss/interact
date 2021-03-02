@@ -16,7 +16,7 @@ from interact.typing import TensorType
 from interact.utils.math_utils import explained_variance
 
 
-@gin.configurable(name_or_fn="a2c", blacklist=["env_fn"])
+@gin.configurable(name_or_fn="a2c", denylist=["env_fn"])
 @register("a2c")
 class A2CAgent(Agent):
     """The advantage actor-critic algorithm.

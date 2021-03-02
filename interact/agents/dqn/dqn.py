@@ -14,7 +14,7 @@ from interact.schedules import LinearDecay
 from interact.typing import TensorType
 
 
-@gin.configurable(name_or_fn="dqn", blacklist=["env_fn"])
+@gin.configurable(name_or_fn="dqn", denylist=["env_fn"])
 @register("dqn")
 class DQNAgent(Agent):
     """The Deep Q-Network algorithm.

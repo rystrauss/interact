@@ -24,7 +24,7 @@ setuptools.setup(
         "click",
         "opencv-python",
         "ray",
-        "gin-config",
+        "gin-config>=0.4",
     ],
     extras_require={"dev": ["pytest"]},
 )

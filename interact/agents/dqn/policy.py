@@ -14,7 +14,7 @@ from interact.utils.math_utils import NormcInitializer
 layers = tf.keras.layers
 
 
-@gin.configurable("qnetwork", whitelist=["dueling", "dueling_hidden_units"])
+@gin.configurable("qnetwork", allowlist=["dueling", "dueling_hidden_units"])
 class QNetwork(tf.keras.Model):
     """A `tf.keras.Model` version of a Q-Network.
 

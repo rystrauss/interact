@@ -16,7 +16,7 @@ from interact.typing import TensorType
 from interact.utils.math_utils import explained_variance
 
 
-@gin.configurable(name_or_fn="ppo", blacklist=["env_fn"])
+@gin.configurable(name_or_fn="ppo", denylist=["env_fn"])
 @register("ppo")
 class PPOAgent(Agent):
     """The Proximal Policy Optimization algorithm.

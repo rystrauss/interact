@@ -15,7 +15,7 @@ from interact.replay_buffer import ReplayBuffer
 from interact.typing import TensorType
 
 
-@gin.configurable("sac", blacklist=["env_fn"])
+@gin.configurable("sac", denylist=["env_fn"])
 @register("sac")
 class SACAgent(Agent):
     """The Soft Actor-Critic algorithm.

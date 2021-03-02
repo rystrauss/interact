@@ -46,7 +46,7 @@ def get_env_type(env_id: str) -> str:
     return env_type
 
 
-@gin.configurable("env", blacklist=["env_id", "seed"])
+@gin.configurable("env", denylist=["env_id", "seed"])
 def make_env_fn(
     env_id: str,
     seed: Optional[int] = None,

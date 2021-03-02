@@ -19,7 +19,7 @@ from interact.typing import TensorType
 from interact.utils.math_utils import explained_variance
 
 
-@gin.configurable(name_or_fn="ppg", blacklist=["env_fn"])
+@gin.configurable(name_or_fn="ppg", denylist=["env_fn"])
 @register("ppg")
 class PPGAgent(Agent):
     """The Phasic Policy Gradients algorithm.

@@ -42,7 +42,7 @@ def build_network_fn(
     return lambda: builder_fn(input_shape)
 
 
-@gin.configurable(name_or_fn="mlp", blacklist=["input_shape"])
+@gin.configurable(name_or_fn="mlp", denylist=["input_shape"])
 @register("mlp")
 def build_mlp(
     input_shape: TensorShape,
@@ -72,7 +72,7 @@ def build_mlp(
     return Sequential(layers)
 
 
-@gin.configurable(name_or_fn="cnn", blacklist=["input_shape"])
+@gin.configurable(name_or_fn="cnn", denylist=["input_shape"])
 @register("cnn")
 def build_nature_cnn(
     input_shape: TensorShape,
