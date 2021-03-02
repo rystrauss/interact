@@ -84,9 +84,12 @@ class A2CAgent(Agent):
             )
 
         self.policy = policy_fn()
-        self.runner = Runner(
-            env_fn,
-            policy_fn,
+        self.policy.build([None, *env.observation_space.shape])
+
+        self.runner = None
+        self.runner_config = dict(
+            env_fn=env_fn,
+            policy_fn=policy_fn,
             num_envs_per_worker=num_envs_per_worker,
             num_workers=num_workers,
         )
@@ -156,13 +159,14 @@ class A2CAgent(Agent):
 
         return actions
 
-    def setup(self, total_timesteps):
+    def pretrain_setup(self, total_timesteps):
         if self.lr_schedule == "linear":
             lr = LinearDecay(self.lr, total_timesteps // self.timesteps_per_iteration)
         else:
             lr = self.lr
 
         self.optimizer = tf.keras.optimizers.Adam(lr, epsilon=self.epsilon)
+        self.runner = Runner(**self.runner_config)
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
         # Update the weights of the actor policies to be consistent with the most

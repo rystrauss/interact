@@ -35,6 +35,9 @@ class SACPolicy(Policy):
             num_outputs, kernel_initializer=NormcInitializer(0.01)
         )
 
+    def build(self, input_shape):
+        self.call(tf.zeros((1, *input_shape[1:])))
+
     def call(self, inputs, **kwargs):
         latent = self._base_model(inputs)
         logits = self._policy_fn(latent)
@@ -148,6 +151,9 @@ class TwinQNetwork(layers.Layer):
 
         self.q1 = SACQFunction(observation_space, action_space, network, units)
         self.q2 = SACQFunction(observation_space, action_space, network, units)
+
+    def build(self, input_shape):
+        self.call(tf.zeros((1, *input_shape[1:])))
 
     def call(self, inputs, **kwargs):
         return self.q1(inputs), self.q2(inputs)

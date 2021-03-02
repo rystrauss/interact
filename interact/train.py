@@ -59,7 +59,7 @@ def train(
 
     agent_name = agent
     agent = get_agent(agent)(make_env_fn(env_id))
-    agent.setup(total_timesteps)
+    agent.pretrain_setup(total_timesteps)
 
     with open(os.path.join(log_dir, "config.gin"), "w") as fp:
         fp.write(gin.operative_config_str())

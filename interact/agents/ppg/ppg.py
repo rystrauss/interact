@@ -406,7 +406,7 @@ class PPGAgent(Agent):
 
         return metrics, ep_infos
 
-    def setup(self, total_timesteps: int):
+    def pretrain_setup(self, total_timesteps: int):
         if self.lr_schedule == "linear":
             lr = LinearDecay(self.lr, total_timesteps // self.timesteps_per_iteration)
         else:

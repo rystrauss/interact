@@ -67,6 +67,7 @@ class DQNAgent(Agent):
         self.train_freq = train_freq
         self.target_update_freq = target_update_freq
         self.gamma = gamma
+        self.lr = lr
         self.initial_epsilon = initial_epsilon
         self.final_epsilon = final_epsilon
         self.epsilon_timesteps = epsilon_timesteps
@@ -74,17 +75,25 @@ class DQNAgent(Agent):
         self.max_grad_norm = max_grad_norm
         self.double = double
 
-        self.env = self.make_env()
+        env = self.make_env()
         self.policy = DQNPolicy(
-            self.env.observation_space, self.env.action_space, q_network
+            env.observation_space, env.action_space, q_network
         )
-        self.optimizer = tf.optimizers.Adam(learning_rate=lr)
+        self.policy.build([None, *env.observation_space.shape])
+
+        self.optimizer = None
         self.epsilon = None
         self.replay_buffer = ReplayBuffer(buffer_size)
         # Because we are only using one local worker, we can just provide a reference
         # to the learner's policy and not worry about updating the actor's weights
         # during training. This speeds things up considerably.
-        self.runner = Runner(env_fn, lambda: self.policy, 1, 1)
+        self.runner_config = dict(
+            env_fn=env_fn,
+            policy_fn=lambda: self.policy,
+            num_envs_per_worker=1,
+            num_workers=1,
+        )
+        self.runner = None
 
     @property
     def timesteps_per_iteration(self) -> int:
@@ -177,9 +186,12 @@ class DQNAgent(Agent):
 
         return metrics, ep_infos
 
-    def setup(self, total_timesteps: int):
+    def pretrain_setup(self, total_timesteps: int):
         self.epsilon = LinearDecay(
             initial_learning_rate=self.initial_epsilon,
             decay_steps=self.epsilon_timesteps,
             end_learning_rate=self.final_epsilon,
         )
+
+        self.runner = Runner(**self.runner_config)
+        self.optimizer = tf.optimizers.Adam(learning_rate=self.lr)

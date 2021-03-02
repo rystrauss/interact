@@ -39,6 +39,10 @@ class PPGPolicy(ActorCriticPolicy):
             self.policy_weights + self._aux_value_fn.trainable_weights
         )
 
+    def build(self, input_shape):
+        super(PPGPolicy, self).build(input_shape)
+        self.auxiliary_heads(tf.zeros([1, *input_shape[1:]]))
+
     def get_actor_weights(self):
         weights = self.get_weights()
         weight_names = [w.name for w in self.weights]

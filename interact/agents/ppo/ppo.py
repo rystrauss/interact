@@ -95,9 +95,12 @@ class PPOAgent(Agent):
             )
 
         self.policy = policy_fn()
-        self.runner = Runner(
-            env_fn,
-            policy_fn,
+        self.policy.build([None, *env.observation_space.shape])
+
+        self.runner = None
+        self.runner_config = dict(
+            env_fn=env_fn,
+            policy_fn=policy_fn,
             num_envs_per_worker=num_envs_per_worker,
             num_workers=num_workers,
         )
@@ -242,7 +245,7 @@ class PPOAgent(Agent):
         metrics = {k: v.result() for k, v in metric_means.items()}
         return metrics, ep_infos
 
-    def setup(self, total_timesteps):
+    def pretrain_setup(self, total_timesteps):
         if self.lr_schedule == "linear":
             lr = LinearDecay(self.lr, total_timesteps // self.timesteps_per_iteration)
         else:
@@ -252,3 +255,5 @@ class PPOAgent(Agent):
 
         if self.cliprange_schedule == "linear":
             self.cliprange = LinearDecay(self.cliprange, total_timesteps)
+
+        self.runner = Runner(**self.runner_config)

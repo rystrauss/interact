@@ -84,6 +84,8 @@ class SACAgent(Agent):
             else:
                 target_entropy = -np.prod(env.action_space.shape)
 
+        self.actor_lr = actor_lr
+        self.critic_lr = critic_lr
         self.entropy_lr = entropy_lr
         self.learning_starts = learning_starts
         self.tau = tau
@@ -100,6 +102,7 @@ class SACAgent(Agent):
         self.buffer = ReplayBuffer(buffer_size)
 
         self.policy = SACPolicy(env.observation_space, env.action_space, network)
+        self.policy.build([None, *env.observation_space.shape])
 
         def policy_fn():
             if num_workers == 1:
@@ -113,13 +116,33 @@ class SACAgent(Agent):
         )
         self.target_q_network.trainable = False
 
-        self.actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
-        self.critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
-        self.alpha_optimizer = (
-            None if not learn_alpha else tf.keras.optimizers.Adam(entropy_lr)
-        )
+        if (
+            not isinstance(env.action_space, gym.spaces.Discrete)
+            and len(env.observation_space.shape) == 1
+        ):
+            q_input_shape = (
+                env.observation_space.shape[0] + env.action_space.shape[0],
+            )
+        else:
+            q_input_shape = env.observation_space.shape
 
-        self.runner = Runner(env_fn, policy_fn, num_envs_per_worker, num_workers)
+        q_input_shape = (None, *q_input_shape)
+
+        self.q_network.build(q_input_shape)
+        self.target_q_network.build(q_input_shape)
+        self.target_q_network.set_weights(self.q_network.get_weights())
+
+        self.actor_optimizer = None
+        self.critic_optimizer = None
+        self.alpha_optimizer = None
+
+        self.runner = None
+        self.runner_config = dict(
+            env_fn=env_fn,
+            policy_fn=policy_fn,
+            num_envs_per_worker=num_envs_per_worker,
+            num_workers=num_workers,
+        )
 
         self.log_alpha = tf.Variable(
             np.log(initial_alpha), trainable=learn_alpha, dtype=tf.float32
@@ -326,6 +349,11 @@ class SACAgent(Agent):
 
         return metrics, ep_infos
 
-    def setup(self, total_timesteps: int):
-        # Make sure policy weights are created
-        self.policy([np.random.normal(size=(1, *self.policy.observation_space.shape))])
+    def pretrain_setup(self, total_timesteps: int):
+        self.runner = Runner(**self.runner_config)
+
+        self.actor_optimizer = tf.keras.optimizers.Adam(self.actor_lr)
+        self.critic_optimizer = tf.keras.optimizers.Adam(self.critic_lr)
+        self.alpha_optimizer = (
+            None if not self.learn_alpha else tf.keras.optimizers.Adam(self.entropy_lr)
+        )
