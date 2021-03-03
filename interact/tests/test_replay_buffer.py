@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from interact.environments.utils import make_env_fn
-from interact.experience.sample_batch import SampleBatch
+from interact.environments import make_env_fn
 from interact.experience.runner import Runner
+from interact.experience.sample_batch import SampleBatch
 from interact.replay_buffer import ReplayBuffer
 from interact.tests.mock_policy import MockPolicy
 

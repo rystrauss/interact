@@ -1,0 +1,9 @@
+train.agent = 'dqn'
+train.env_id = 'LunarLander-v2'
+train.total_timesteps = 2e5
+train.log_interval = 100
+
+dqn.buffer_size = 100000
+dqn.epsilon_timesteps = 20000
+dqn.final_epsilon = 0.05
+dqn.lr = 1e-3

@@ -1,10 +1,9 @@
-import numpy as np
 import pytest
 
-from interact.environments.utils import make_env_fn
+from interact.environments import make_env_fn
 from interact.experience.postprocessing import AdvantagePostprocessor
-from interact.experience.sample_batch import SampleBatch
 from interact.experience.runner import Runner
+from interact.experience.sample_batch import SampleBatch
 from interact.tests.mock_policy import MockPolicy
 
 
@@ -23,14 +22,18 @@ def test_advantage_postprocessor(cartpole_episode_batch):
     episodes, policy_fn = cartpole_episode_batch
 
     episodes.for_each(
-        AdvantagePostprocessor(policy_fn(), gamma=0.9, use_critic=False, use_gae=False)
+        AdvantagePostprocessor(
+            policy_fn().value, gamma=0.9, use_critic=False, use_gae=False
+        )
     )
 
     assert episodes[0][SampleBatch.ADVANTAGES][-1] == 1
     assert episodes[1][SampleBatch.ADVANTAGES][-1] == 91
 
     episodes.for_each(
-        AdvantagePostprocessor(policy_fn(), gamma=1.0, use_critic=False, use_gae=False)
+        AdvantagePostprocessor(
+            policy_fn().value, gamma=1.0, use_critic=False, use_gae=False
+        )
     )
 
     assert episodes[0][SampleBatch.ADVANTAGES][-1] == 1

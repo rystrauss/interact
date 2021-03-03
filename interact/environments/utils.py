@@ -1,11 +1,11 @@
 import re
 from collections import defaultdict
-from typing import Callable
+from typing import Callable, Optional
 
 import gin
 import gym
+from gym.wrappers import AtariPreprocessing, FrameStack
 
-from interact.environments.atari_wrappers import wrap_atari
 from interact.environments.wrappers import (
     ClipActionsWrapper,
     MonitorEpisodeWrapper,
@@ -46,12 +46,13 @@ def get_env_type(env_id: str) -> str:
     return env_type
 
 
-@gin.configurable("env", blacklist=["env_id", "seed"])
+@gin.configurable("env", denylist=["env_id", "seed"])
 def make_env_fn(
     env_id: str,
-    seed: int = None,
-    reward_scale: float = None,
-    episode_time_limit: int = None,
+    seed: Optional[int] = None,
+    reward_scale: Optional[float] = None,
+    episode_time_limit: Optional[int] = None,
+    frame_stack: Optional[int] = None,
 ) -> Callable[[], gym.Env]:
     """Returns a function that constructs the given environment when called.
 
@@ -62,6 +63,8 @@ def make_env_fn(
         seed: An optional seed to seed the returned environment with.
         reward_scale: Factor by which rewards should be scaled.
         episode_time_limit: The maximum number of steps that an episode can last.
+        frame_stack: The number of most recent observations to stack when presented
+            to the agent. For Atari environments, this will be 4 by default.
 
     Returns:
         A function that returns a new instance of the requested environment when called.
@@ -69,6 +72,8 @@ def make_env_fn(
     env_type = get_env_type(env_id)
 
     def _env_fn():
+        nonlocal frame_stack
+
         env = gym.make(env_id)
 
         if episode_time_limit is not None:
@@ -83,7 +88,11 @@ def make_env_fn(
             env = ScaleRewardsWrapper(env, reward_scale)
 
         if env_type == "atari":
-            env = wrap_atari(env)
+            env = AtariPreprocessing(env)
+            frame_stack = 4
+
+        if frame_stack is not None:
+            env = FrameStack(env, frame_stack)
 
         if isinstance(env.action_space, gym.spaces.Box):
             env = ClipActionsWrapper(env)

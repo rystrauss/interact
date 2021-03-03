@@ -2,10 +2,11 @@ import tensorflow as tf
 
 
 class DuelingAggregator(tf.keras.layers.Layer):
-    """Implements the aggregation module of the dueling network architecture proposed by Wang et. al.
+    """Implements the aggregation module of the dueling network architecture.
 
-    This layer accepts two inputs, the value stream and the advantage stream. This layer expects the input as a list
-    that looks like [value_stream, advantage_stream].
+    This layer accepts two inputs, the value stream and the advantage stream.
+    This layer expects the input as a list that looks like
+    [value_stream, advantage_stream].
     """
 
     def __init__(self, **kwargs):

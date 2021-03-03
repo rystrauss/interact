@@ -13,13 +13,13 @@ from interact.experience.episode_batch import EpisodeBatch
 from interact.experience.postprocessing import AdvantagePostprocessor
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
-from interact.utils.math_utils import explained_variance
 from interact.networks import build_network_fn
 from interact.schedules import LinearDecay
 from interact.typing import TensorType
+from interact.utils.math_utils import explained_variance
 
 
-@gin.configurable(name_or_fn="ppg", blacklist=["env_fn"])
+@gin.configurable(name_or_fn="ppg", denylist=["env_fn"])
 @register("ppg")
 class PPGAgent(Agent):
     """The Phasic Policy Gradients algorithm.
@@ -274,7 +274,11 @@ class PPGAgent(Agent):
 
             episodes.for_each(
                 AdvantagePostprocessor(
-                    self.policy, self.gamma, self.lam, self.use_gae, self.use_critic
+                    self.policy.value,
+                    self.gamma,
+                    self.lam,
+                    self.use_gae,
+                    self.use_critic,
                 )
             )
             experience_buffer.append(episodes)
@@ -402,7 +406,7 @@ class PPGAgent(Agent):
 
         return metrics, ep_infos
 
-    def setup(self, total_timesteps: int):
+    def pretrain_setup(self, total_timesteps: int):
         if self.lr_schedule == "linear":
             lr = LinearDecay(self.lr, total_timesteps // self.timesteps_per_iteration)
         else:

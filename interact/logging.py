@@ -20,9 +20,6 @@ class Colors(Enum):
 class Logger:
     """A utility for logging messages and data.
 
-    Strings that are logged with this class are simultaneously sent to the console and saved to a log file.
-    This class is also used to save summaries to TensorBoard.
-
     Args:
         dir: The directory to which logs will be saved.
     """
@@ -66,6 +63,22 @@ class Logger:
                 if prefix is not None:
                     key = os.path.join(prefix, key)
                 tf.summary.scalar(key, value, step)
+
+    def log_histograms(self, step, prefix=None, **kwargs):
+        """Logs histograms to Tensorboard.
+
+        Args:
+            step: The step associated with this summary.
+            kwargs: Key-value pairs to be logged.
+
+        Returns:
+            None.
+        """
+        with self.writer.as_default():
+            for key, value in kwargs.items():
+                if prefix is not None:
+                    key = os.path.join(prefix, key)
+                tf.summary.histogram(key, value, step)
 
     def close(self):
         """Closes this logger object.

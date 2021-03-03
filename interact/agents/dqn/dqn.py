@@ -1,4 +1,4 @@
-from typing import Tuple, Dict, List, Callable
+from typing import Tuple, Dict, List, Callable, Optional
 
 import gin
 import gym
@@ -9,36 +9,47 @@ from interact.agents.dqn.policy import DQNPolicy
 from interact.agents.utils import register
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
-from interact.replay_buffer import ReplayBuffer
+from interact.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from interact.schedules import LinearDecay
 from interact.typing import TensorType
 
 
-@gin.configurable(name_or_fn="dqn", blacklist=["env_fn"])
+@gin.configurable(name_or_fn="dqn", denylist=["env_fn"])
 @register("dqn")
 class DQNAgent(Agent):
     """The Deep Q-Network algorithm.
 
-    TODO: Add support for prioritized experience replay.
-
     Args:
-        env_fn: A function that, when called, returns an instance of the agent's environment.
+        env_fn: A function that, when called, returns an instance of the agent's
+            environment.
         q_network: The type of model to use for the policy network.
         batch_size: The size of experience batches sampled from the replay buffer.
-        buffer_size: The size of the experience replay buffer. Network update are sampled from this
-            number of most recent frames.
-        train_freq: The frequency (measured in the number of updates) with which the online Q- network is updated.
-        target_update_freq: The frequency (measured in the number of updates) with which the target
-            network is updated.
+        buffer_size: The size of the experience replay buffer. Network update are
+            sampled from this number of most recent frames.
+        train_freq: The frequency (measured in the number of updates) with which the
+            online Q-network is updated.
+        target_update_freq: The frequency (measured in the number of updates) with
+            which the target network is updated.
         gamma: Discount factor.
         lr: The learning rate.
         initial_epsilon: Initial value of epsilon in e-greedy exploration.
         final_epsilon: Final value of epsilon in e-greedy exploration.
         epsilon_timesteps: The number of timesteps over which epsilon is annealed.
-        learning_starts: A uniform random policy is run for this number of steps before learning starts,
-            and the resulting experience is used to populate the replay memory.
+        learning_starts: A uniform random policy is run for this number of steps before
+            learning starts, and the resulting experience is used to populate the
+            replay memory.
         max_grad_norm: The maximum value for the gradient clipping.
         double: If True, Double Q-Learning is used.
+        prioritized_replay: If True, a prioritized experience replay will be used.
+        prioritized_replay_alpha: Alpha parameter for prioritized replay.
+        prioritized_replay_beta: Initial beta parameter for prioritized replay.
+        final_prioritized_replay_beta: The final value of the prioritized replay beta
+            parameter.
+        prioritized_replay_beta_steps: Number of steps over which the prioritized
+            replay beta parameter will be annealed. If None, this will be set to the
+            total number of training steps.
+        prioritized_replay_epsilon: Epsilon to add to td-errors when updating
+            priorities.
     """
 
     def __init__(
@@ -55,53 +66,74 @@ class DQNAgent(Agent):
         final_epsilon: float = 0.02,
         epsilon_timesteps: int = 10000,
         learning_starts: int = 1000,
-        max_grad_norm: float = None,
+        max_grad_norm: Optional[float] = None,
         double: bool = True,
+        prioritized_replay: bool = False,
+        prioritized_replay_alpha: float = 0.6,
+        prioritized_replay_beta: float = 0.4,
+        final_prioritized_replay_beta: float = 4.0,
+        prioritized_replay_beta_steps: Optional[int] = None,
+        prioritized_replay_epsilon: float = 1e-6,
     ):
         super().__init__(env_fn)
 
         self.batch_size = batch_size
+        self.buffer_size = buffer_size
         self.train_freq = train_freq
         self.target_update_freq = target_update_freq
         self.gamma = gamma
+        self.lr = lr
         self.initial_epsilon = initial_epsilon
         self.final_epsilon = final_epsilon
         self.epsilon_timesteps = epsilon_timesteps
         self.learning_starts = learning_starts
         self.max_grad_norm = max_grad_norm
         self.double = double
+        self.prioritized_replay = prioritized_replay
+        self.prioritized_replay_alpha = prioritized_replay_alpha
+        self.prioritized_replay_beta = prioritized_replay_beta
+        self.prioritized_replay_beta_steps = prioritized_replay_beta_steps
+        self.final_prioritized_replay_beta = final_prioritized_replay_beta
+        self.prioritized_replay_epsilon = prioritized_replay_epsilon
 
-        self.env = self.make_env()
-        self.policy = DQNPolicy(
-            self.env.observation_space, self.env.action_space, q_network
-        )
-        self.optimizer = tf.optimizers.Adam(learning_rate=lr)
+        env = self.make_env()
+        self.policy = DQNPolicy(env.observation_space, env.action_space, q_network)
+        self.policy.build([None, *env.observation_space.shape])
+
+        self.optimizer = None
         self.epsilon = None
-        self.replay_buffer = ReplayBuffer(buffer_size)
-        # Because we are only using one local worker, we can just provide a reference to the learner's policy
-        # and not worry about updating the actor's weights during training. This speeds things up considerably.
-        self.runner = Runner(env_fn, lambda: self.policy, 1, 1)
+        self.replay_buffer = None
+        self.beta_schedule = None
+
+        # Because we are only using one local worker, we can just provide a reference
+        # to the learner's policy and not worry about updating the actor's weights
+        # during training. This speeds things up considerably.
+        self.runner_config = dict(
+            env_fn=env_fn,
+            policy_fn=lambda: self.policy,
+            num_envs_per_worker=1,
+            num_workers=1,
+        )
+        self.runner = None
 
     @property
     def timesteps_per_iteration(self) -> int:
         return 1
 
     @tf.function
-    def _update(self, obs, actions, rewards, next_obs, dones):
-        dones = tf.cast(tf.squeeze(dones), tf.float32)
-        actions = tf.cast(tf.squeeze(actions), tf.int32)
-        rewards = tf.squeeze(rewards)
-        num_actions = self.env.action_space.n
+    def _update(self, obs, actions, rewards, next_obs, dones, weights):
+        actions = tf.cast(actions, tf.int32)
 
-        # Get Q values for the observations at the next time step with the target network
+        # Get Q values for the observations at the next time step with the
+        # target network
         next_q_values = self.policy.target_network(next_obs)
 
         if self.double:
             # If using double DQN, we use online network to select actions
             selected_actions = tf.argmax(self.policy(next_obs), axis=-1)
-            # The one-hot matrix allows us to extract only the Q-values for our selected actions
-            next_q_values_best = tf.reduce_sum(
-                next_q_values * tf.one_hot(selected_actions, num_actions), axis=-1
+            # Extract only the Q-values for our selected actions
+            next_q_values_best = tf.gather(
+                next_q_values, selected_actions, batch_dims=1
             )
         else:
             # In vanilla DQN, simply use the maximum value
@@ -111,34 +143,32 @@ class DQNAgent(Agent):
         next_q_values_best_masked = (1.0 - dones) * next_q_values_best
         # Calculate targets (Bellman equation)
         targets = rewards + self.gamma * next_q_values_best_masked
+        targets = tf.expand_dims(targets, 1)
 
-        with tf.GradientTape() as tape:
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            tape.watch(self.policy.q_network.trainable_variables)
+
             # Forward pass through online Q network
             q_values = self.policy(obs)
+            q_values_selected = tf.gather(q_values, actions, batch_dims=1)
+            q_values_selected = tf.expand_dims(q_values_selected, 1)
 
-            # Q scores for actions which we know were selected in each state; we again use the one-hot trick as above
-            q_values_selected = tf.reduce_sum(
-                q_values * tf.one_hot(actions, num_actions), axis=-1
-            )
-
-            # Compute loss; Huber loss implements the gradient clipping described by Mnih et. al.
-            # Note that the meaning of the gradient clipping they describe can be easily misinterpreted
-            # as saying to clip the objective. It is really saying to clip the multiplicative term when computing
-            # the gradient, which is what the Huber loss does for us.
-            targets = tf.expand_dims(targets, axis=1)
-            q_values_selected = tf.expand_dims(q_values_selected, axis=1)
-            loss = tf.keras.losses.Huber()(targets, q_values_selected)
+            # Huber loss implements the gradient clipping described by Mnih et. al.
+            loss = tf.losses.huber(targets, q_values_selected)
+            loss = tf.reduce_mean(loss * weights)
 
         # Calculate gradients of the loss with respect to the network parameters
         vars = self.policy.q_network.trainable_variables
         grads = tape.gradient(loss, vars)
         # Perform gradient clipping
-        if self.max_grad_norm:
+        if self.max_grad_norm is not None:
             grads, _ = tf.clip_by_global_norm(grads, self.max_grad_norm)
         # Apply the gradient update
         self.optimizer.apply_gradients(zip(grads, vars))
 
-        return {"loss": loss}
+        td_errors = q_values_selected - targets
+
+        return {"loss": loss}, td_errors
 
     @tf.function
     def act(self, obs: TensorType, deterministic: bool = True) -> TensorType:
@@ -147,8 +177,7 @@ class DQNAgent(Agent):
         if deterministic:
             actions = tf.argmax(q_values, axis=-1)
         else:
-            # TODO: Test this.
-            actions = tf.random.categorical(q_values, 1)
+            raise ValueError("Non-deterministic actions are not implemented for DQN.")
 
         return actions
 
@@ -156,26 +185,38 @@ class DQNAgent(Agent):
         # Get the current value of epsilon for exploration
         current_epsilon = self.epsilon(update)
         # Take a step in the environment
-        batch, ep_infos = self.runner.run(1, epsilon=current_epsilon)
+        episodes, ep_infos = self.runner.run(1, epsilon=current_epsilon)
 
         # Add the new experience to the replay buffer
-        self.replay_buffer.add(batch.to_sample_batch())
+        self.replay_buffer.add(episodes.to_sample_batch())
 
         metrics = {"epsilon": current_epsilon}
 
         if update > self.learning_starts and update % self.train_freq == 0:
             # Sample a batch of experience from the replay buffer
-            sample = self.replay_buffer.sample(self.batch_size)
-            # Perform an update step using the sampled experience
-            metrics.update(
-                self._update(
-                    sample[SampleBatch.OBS],
-                    sample[SampleBatch.ACTIONS],
-                    sample[SampleBatch.REWARDS],
-                    sample[SampleBatch.NEXT_OBS],
-                    sample[SampleBatch.DONES],
+            if self.prioritized_replay:
+                sample = self.replay_buffer.sample(
+                    self.batch_size, self.beta_schedule(update)
                 )
+                weights = sample[SampleBatch.PRIO_WEIGHTS]
+            else:
+                sample = self.replay_buffer.sample(self.batch_size)
+                weights = 1.0
+
+            # Perform an update step using the sampled experience
+            metrics_from_update, td_errors = self._update(
+                sample[SampleBatch.OBS],
+                sample[SampleBatch.ACTIONS],
+                sample[SampleBatch.REWARDS],
+                sample[SampleBatch.NEXT_OBS],
+                sample[SampleBatch.DONES],
+                weights,
             )
+
+            metrics.update(metrics_from_update)
+
+            if self.prioritized_replay:
+                self.replay_buffer.update_priorities(sample["batch_indices"], td_errors)
 
         # Periodically update target network
         if update > self.learning_starts and update % self.target_update_freq == 0:
@@ -183,9 +224,25 @@ class DQNAgent(Agent):
 
         return metrics, ep_infos
 
-    def setup(self, total_timesteps: int):
+    def pretrain_setup(self, total_timesteps: int):
         self.epsilon = LinearDecay(
             initial_learning_rate=self.initial_epsilon,
             decay_steps=self.epsilon_timesteps,
             end_learning_rate=self.final_epsilon,
         )
+
+        self.beta_schedule = LinearDecay(
+            initial_learning_rate=self.prioritized_replay_beta,
+            decay_steps=self.prioritized_replay_beta_steps or total_timesteps,
+            end_learning_rate=self.final_prioritized_replay_beta,
+        )
+
+        self.runner = Runner(**self.runner_config)
+        self.optimizer = tf.optimizers.Adam(learning_rate=self.lr)
+
+        if self.prioritized_replay:
+            self.replay_buffer = PrioritizedReplayBuffer(
+                self.buffer_size, self.prioritized_replay_alpha
+            )
+        else:
+            self.replay_buffer = ReplayBuffer(self.buffer_size)

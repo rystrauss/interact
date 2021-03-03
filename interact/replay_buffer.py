@@ -1,3 +1,11 @@
+"""Replay buffers for storing experience.
+
+This module is adapted from RLLib:
+https://github.com/ray-project/ray/blob/master/rllib/execution/replay_buffer.py
+"""
+
+from typing import Optional, List
+
 import numpy as np
 
 from interact.experience.sample_batch import SampleBatch
@@ -12,47 +20,52 @@ class ReplayBuffer:
 
     Args:
         size: The maximum size of the buffer.
+        seed: Random seed used by this buffer's PRNG.
     """
 
-    def __init__(self, size: int):
+    def __init__(self, size: int, seed: Optional[int] = None):
         self._storage = []
         self._maxsize = size
         self._next_idx = 0
+        self._rng = np.random.RandomState(seed)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._storage)
 
-    def add(self, item: SampleBatch):
+    def add(self, batch: SampleBatch):
         """Adds experience to the replay buffer.
 
         Args:
-            item: A sample batch of experience to be added.
+            batch: A sample batch of experience to be added.
 
         Returns:
             None.
         """
-        for e in item.split():
-            if self._next_idx >= len(self._storage):
-                self._storage.append(e)
-            else:
-                self._storage[self._next_idx] = e
+        for item in batch.split():
+            self._add_item(item)
 
-            # Wrap around storage as a circular buffer once we hit maxsize.
-            if self._next_idx >= self._maxsize - 1:
-                self._next_idx = 0
-            else:
-                self._next_idx += 1
+    def _add_item(self, item: SampleBatch):
+        if self._next_idx >= len(self._storage):
+            self._storage.append(item)
+        else:
+            self._storage[self._next_idx] = item
 
-    def sample(self, num_items: int, seed=None) -> SampleBatch:
+        # Wrap around storage as a circular buffer once we hit maxsize.
+        if self._next_idx >= self._maxsize - 1:
+            self._next_idx = 0
+        else:
+            self._next_idx += 1
+
+    def sample(self, num_items: int) -> SampleBatch:
         """Sample a batch of experiences.
 
         Args:
             num_items: Number of items to sample from this buffer.
 
         Returns:
-            SampleBatch: concatenated batch of items.
+            Concatenated batch of items.
         """
-        idxes = np.random.RandomState(seed).randint(0, len(self._storage), (num_items,))
+        idxes = self._rng.randint(0, len(self._storage), (num_items,))
         return SampleBatch.concat_samples([self._storage[i] for i in idxes])
 
 
@@ -60,17 +73,24 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     """A prioritized replay buffer.
 
     Args:
-        size (int): Max number of items to store in the FIFO buffer.
-        alpha (float): how much prioritization is used
+        size: The maximum size of the buffer.
+        alpha: The amount of prioritization that is used
             (0 - no prioritization, 1 - full prioritization).
+        seed: Random seed used by this buffer's PRNG.
     """
 
-    def __init__(self, size: int, alpha: float, beta: float):
-        super(PrioritizedReplayBuffer, self).__init__(size)
+    def __init__(
+        self,
+        size: int,
+        alpha: float,
+        prioritized_replay_eps: float = 1e-6,
+        seed: Optional[int] = None,
+    ):
+        super().__init__(size, seed)
         assert alpha > 0
-        assert beta >= 0.0
+        assert prioritized_replay_eps >= 0
         self._alpha = alpha
-        self._beta = beta
+        self._prioritized_replay_eps = prioritized_replay_eps
 
         it_capacity = 1
         while it_capacity < size:
@@ -80,65 +100,62 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_min = MinSegmentTree(it_capacity)
         self._max_priority = 1.0
 
-    def add(self, item: SampleBatch):
+    def add(self, batch: SampleBatch):
         """Adds experience to the replay buffer.
 
+        If the sample batch contains values for `SampleBatch.PRIO_WEIGHTS`, they will
+        be used as the priority weights of the samples.
+
         Args:
-            item: A sample batch of experience to be added. If this batch contains an
-                entry for the key `SampleBatch.PRIO_WEIGHTS`, it will be used as the
-                corresponding priority weights.
+            batch: A sample batch of experience to be added.
 
         Returns:
             None.
         """
-        for e in item.split():
-            if self._next_idx >= len(self._storage):
-                self._storage.append(e)
-            else:
-                self._storage[self._next_idx] = e
+        for item in batch.split():
+            idx = self._next_idx
+            self._add_item(item)
 
-            weight = e.get(SampleBatch.PRIO_WEIGHTS)
+            weight = item.get(SampleBatch.PRIO_WEIGHTS)
             if weight is None:
                 weight = self._max_priority
 
-            self._it_sum[self._next_idx] = weight ** self._alpha
-            self._it_min[self._next_idx] = weight ** self._alpha
+            self._it_sum[idx] = weight ** self._alpha
+            self._it_min[idx] = weight ** self._alpha
 
-            # Wrap around storage as a circular buffer once we hit maxsize.
-            if self._next_idx >= self._maxsize:
-                self._next_idx = 0
-            else:
-                self._next_idx += 1
-
-    def _sample_proportional(self, num_items: int):
+    def _sample_proportional(self, num_items: int) -> List[int]:
         res = []
         for _ in range(num_items):
-            mass = np.random.random() * self._it_sum.sum(0, len(self._storage))
+            mass = self._rng.random() * self._it_sum.sum(0, len(self._storage))
             idx = self._it_sum.find_prefixsum_idx(mass)
             res.append(idx)
         return res
 
-    def sample(self, num_items: int) -> SampleBatch:
-        """Sample a batch of experiences and return priority weights, indices.
+    def sample(self, num_items: int, beta: float) -> SampleBatch:
+        """Sample a batch of experiences and return priority weights and indices.
 
         Args:
-            num_items (int): Number of items to sample from this buffer.
+            num_items: Number of items to sample from this buffer.
+            beta: To what degree to use importance weights
+                (0 - no corrections, 1 - full correction).
 
         Returns:
-            SampleBatchType: Concatenated batch of items including "weights"
-                and "batch_indexes" fields denoting IS of each sampled
-                transition and original idxes in buffer of sampled experiences.
+            Concatenated batch of items including "weights"
+            and "batch_indexes" fields denoting IS of each sampled
+            transition and original idxes in buffer of sampled experiences.
         """
+        assert beta >= 0.0
+
         idxes = self._sample_proportional(num_items)
 
         weights = []
         batch_indexes = []
         p_min = self._it_min.min() / self._it_sum.sum()
-        max_weight = (p_min * len(self._storage)) ** (-self._beta)
+        max_weight = (p_min * len(self._storage)) ** (-beta)
 
         for idx in idxes:
             p_sample = self._it_sum[idx] / self._it_sum.sum()
-            weight = (p_sample * len(self._storage)) ** (-self._beta)
+            weight = (p_sample * len(self._storage)) ** (-beta)
             weights.append(weight / max_weight)
             batch_indexes.append(idx)
 
@@ -149,23 +166,22 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         return batch
 
-    def update_priorities(self, idxes, priorities):
+    def update_priorities(self, indices: List[int], priorities: List[float]):
         """Update priorities of sampled transitions.
 
         Sets priority of transition at index idxes[i] in buffer to priorities[i].
 
         Args:
-            idxes: [int]
-              List of idxes of sampled transitions
-            priorities: [float]
-              List of updated priorities corresponding to
-              transitions at the sampled idxes denoted by
-              variable `idxes`.
+            indices: Indices of the transitions to update.
+            priorities: Priorities corresponding to transitions at the sampled indices
+                denoted by `indices`.
         """
-        assert len(idxes) == len(priorities)
+        assert len(indices) == len(priorities)
 
-        for idx, priority in zip(idxes, priorities):
-            assert priority > 0
+        new_priorities = np.abs(priorities) + self._prioritized_replay_eps
+
+        for idx, priority in zip(indices, new_priorities):
+            assert priority > 0, priority
             assert 0 <= idx < len(self._storage)
             self._it_sum[idx] = priority ** self._alpha
             self._it_min[idx] = priority ** self._alpha

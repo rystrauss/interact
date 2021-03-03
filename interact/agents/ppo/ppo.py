@@ -9,14 +9,14 @@ from interact.agents.utils import register
 from interact.experience.postprocessing import AdvantagePostprocessor
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
-from interact.utils.math_utils import explained_variance
 from interact.networks import build_network_fn
 from interact.policies.actor_critic import ActorCriticPolicy
 from interact.schedules import LinearDecay
 from interact.typing import TensorType
+from interact.utils.math_utils import explained_variance
 
 
-@gin.configurable(name_or_fn="ppo", blacklist=["env_fn"])
+@gin.configurable(name_or_fn="ppo", denylist=["env_fn"])
 @register("ppo")
 class PPOAgent(Agent):
     """The Proximal Policy Optimization algorithm.
@@ -95,9 +95,12 @@ class PPOAgent(Agent):
             )
 
         self.policy = policy_fn()
-        self.runner = Runner(
-            env_fn,
-            policy_fn,
+        self.policy.build([None, *env.observation_space.shape])
+
+        self.runner = None
+        self.runner_config = dict(
+            env_fn=env_fn,
+            policy_fn=policy_fn,
             num_envs_per_worker=num_envs_per_worker,
             num_workers=num_workers,
         )
@@ -205,7 +208,7 @@ class PPOAgent(Agent):
         # Compute advantages for the collected experience.
         episodes.for_each(
             AdvantagePostprocessor(
-                self.policy, self.gamma, self.lam, self.use_gae, self.use_critic
+                self.policy.value, self.gamma, self.lam, self.use_gae, self.use_critic
             )
         )
 
@@ -242,7 +245,7 @@ class PPOAgent(Agent):
         metrics = {k: v.result() for k, v in metric_means.items()}
         return metrics, ep_infos
 
-    def setup(self, total_timesteps):
+    def pretrain_setup(self, total_timesteps):
         if self.lr_schedule == "linear":
             lr = LinearDecay(self.lr, total_timesteps // self.timesteps_per_iteration)
         else:
@@ -252,3 +255,5 @@ class PPOAgent(Agent):
 
         if self.cliprange_schedule == "linear":
             self.cliprange = LinearDecay(self.cliprange, total_timesteps)
+
+        self.runner = Runner(**self.runner_config)

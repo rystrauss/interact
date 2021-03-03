@@ -1,17 +1,19 @@
 from typing import Union, Dict, Callable
 
+import gin
 import gym
 import numpy as np
 import tensorflow as tf
 from tensorflow_probability import distributions as tfd
 
 from interact.experience.sample_batch import SampleBatch
-from interact.utils.math_utils import NormcInitializer
 from interact.policies.base import Policy
+from interact.utils.math_utils import NormcInitializer
 
 layers = tf.keras.layers
 
 
+@gin.configurable(allowlist=["free_log_std"])
 class ActorCriticPolicy(Policy):
     """A generic implementation of an Actor-Critic policy.
 
@@ -25,6 +27,8 @@ class ActorCriticPolicy(Policy):
             the policy and value functions.
         value_network: Either 'shared' or 'copy', indicating whether or not the value
             function should share weights with the policy.
+        free_log_std: Use free-floating (i.e. non-state-dependent) variables for the
+            policy scales in continuous actions spaces.
     """
 
     def __init__(
@@ -33,6 +37,7 @@ class ActorCriticPolicy(Policy):
         action_space: gym.Space,
         base_model_fn: Callable[[], layers.Layer],
         value_network: str = "copy",
+        free_log_std: bool = True,
     ):
         super().__init__(observation_space, action_space)
 
@@ -51,16 +56,21 @@ class ActorCriticPolicy(Policy):
             self._policy_fn = layers.Dense(action_space.n)
             self.is_discrete = True
         else:
-            self._policy_fn = layers.Dense(
-                action_space.shape[0], kernel_initializer=NormcInitializer(0.01)
-            )
-            # TODO: Make this optional.
-            self._policy_logstds = self.add_weight(
-                "policy_logstds",
-                shape=(action_space.shape[0],),
-                trainable=True,
-                initializer=tf.keras.initializers.Zeros(),
-            )
+            if free_log_std:
+                self._policy_logstds = self.add_weight(
+                    "policy_logstds",
+                    shape=(action_space.shape[0],),
+                    trainable=True,
+                    initializer=tf.keras.initializers.Zeros(),
+                )
+                self._policy_fn = layers.Dense(
+                    action_space.shape[0], kernel_initializer=NormcInitializer(0.01)
+                )
+            else:
+                self._policy_logstds = None
+                self._policy_fn = layers.Dense(
+                    action_space.shape[0] * 2, kernel_initializer=NormcInitializer(0.01)
+                )
             self.is_discrete = False
 
         self._value_fn = layers.Dense(1, kernel_initializer=NormcInitializer(0.01))
@@ -69,7 +79,13 @@ class ActorCriticPolicy(Policy):
         if self.is_discrete:
             pi = tfd.Categorical(latent)
         else:
-            pi = tfd.MultivariateNormalDiag(latent, tf.exp(self._policy_logstds))
+            if self._policy_logstds is not None:
+                mu = latent
+                logstd = self._policy_logstds
+            else:
+                mu, logstd = tf.split(latent, 2, axis=-1)
+
+            pi = tfd.MultivariateNormalDiag(mu, tf.exp(logstd))
         return pi
 
     def call(self, inputs, **kwargs):
@@ -86,9 +102,7 @@ class ActorCriticPolicy(Policy):
         return pi, value_preds
 
     @tf.function
-    def _step(
-        self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
-    ) -> Dict[str, Union[float, np.ndarray]]:
+    def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
         pi, value_preds = self.call(obs)
 
         actions = pi.sample()

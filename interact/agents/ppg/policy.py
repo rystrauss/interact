@@ -5,8 +5,8 @@ import numpy as np
 import tensorflow as tf
 
 from interact.experience.sample_batch import SampleBatch
-from interact.utils.math_utils import NormcInitializer
 from interact.policies.actor_critic import ActorCriticPolicy
+from interact.utils.math_utils import NormcInitializer
 
 layers = tf.keras.layers
 
@@ -39,6 +39,10 @@ class PPGPolicy(ActorCriticPolicy):
             self.policy_weights + self._aux_value_fn.trainable_weights
         )
 
+    def build(self, input_shape):
+        super(PPGPolicy, self).build(input_shape)
+        self.auxiliary_heads(tf.zeros([1, *input_shape[1:]]))
+
     def get_actor_weights(self):
         weights = self.get_weights()
         weight_names = [w.name for w in self.weights]
@@ -64,9 +68,7 @@ class PPGPolicy(ActorCriticPolicy):
         return pi
 
     @tf.function
-    def _step(
-        self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
-    ) -> Dict[str, Union[float, np.ndarray]]:
+    def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
         pi = self.call(obs)
         value_preds = self.value(obs)
 

@@ -1,6 +1,6 @@
 train.agent = 'sac'
 train.env_id = 'CartPole-v1'
-train.total_timesteps = 15000
+train.total_timesteps = 30000
 train.log_interval = 100
 
 sac.gamma = 0.95

@@ -14,7 +14,7 @@ from interact.utils.math_utils import NormcInitializer
 layers = tf.keras.layers
 
 
-@gin.configurable("qnetwork", whitelist=["dueling", "dueling_units"])
+@gin.configurable(allowlist=["dueling", "dueling_hidden_units"])
 class QNetwork(tf.keras.Model):
     """A `tf.keras.Model` version of a Q-Network.
 
@@ -25,8 +25,8 @@ class QNetwork(tf.keras.Model):
         action_space: The action space of this policy.
         network: The type of network to use (e.g. 'cnn', 'mlp').
         dueling: A boolean indicating whether or not to use the dueling architecture.
-        dueling_units: The number of hidden units in the first layer of each stream in the dueling network.
-            Only applicable if `dueling` is True.
+        dueling_hidden_units: The number of hidden units in the first layer of each
+            stream in the dueling network. Only applicable if `dueling` is True.
     """
 
     def __init__(
@@ -35,7 +35,7 @@ class QNetwork(tf.keras.Model):
         action_space: gym.Space,
         network: str,
         dueling: bool = False,
-        dueling_units: int = 64,
+        dueling_hidden_units: int = 64,
     ):
         assert isinstance(
             action_space, gym.spaces.Discrete
@@ -46,14 +46,18 @@ class QNetwork(tf.keras.Model):
 
         if dueling:
             value_stream = layers.Dense(
-                dueling_units, activation="relu", kernel_initializer=NormcInitializer()
+                dueling_hidden_units,
+                activation="relu",
+                kernel_initializer=NormcInitializer(),
             )(h)
             value_stream = layers.Dense(1, kernel_initializer=NormcInitializer(0.01))(
                 value_stream
             )
 
             advantage_stream = layers.Dense(
-                dueling_units, activation="relu", kernel_initializer=NormcInitializer()
+                dueling_hidden_units,
+                activation="relu",
+                kernel_initializer=NormcInitializer(),
             )(h)
             advantage_stream = layers.Dense(
                 action_space.n, kernel_initializer=NormcInitializer(0.01)
@@ -71,7 +75,8 @@ class QNetwork(tf.keras.Model):
 class DQNPolicy(Policy):
     """A policy for a DQN agent.
 
-    This policy encapsulates the online Q-network and the target network, and uses an epsilon-greedy exploration policy.
+    This policy encapsulates the online Q-network and the target network, and uses
+    an epsilon-greedy exploration policy.
 
     Args:
         observation_space: The observation space of this policy.
@@ -90,6 +95,11 @@ class DQNPolicy(Policy):
 
         self.q_network = QNetwork(observation_space, action_space, network)
         self.target_network = QNetwork(observation_space, action_space, network)
+        self.target_network.trainable = False
+
+    def build(self, input_shape):
+        super(DQNPolicy, self).build(input_shape)
+        self.update_target_network()
 
     @tf.function
     def call(self, inputs, **kwargs):
@@ -99,12 +109,10 @@ class DQNPolicy(Policy):
         self.target_network.set_weights(self.q_network.get_weights())
 
     @tf.function
-    def _step(
-        self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
-    ) -> Dict[str, Union[float, np.ndarray]]:
+    def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
         epsilon = kwargs.get("epsilon")
 
-        q_values = self(obs)
+        q_values = self.q_network(obs)
         deterministic_actions = tf.argmax(q_values, axis=-1)
         random_actions = tf.random.uniform(
             [len(obs)], 0, self.action_space.n, dtype=tf.int64

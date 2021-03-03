@@ -35,6 +35,9 @@ class SACPolicy(Policy):
             num_outputs, kernel_initializer=NormcInitializer(0.01)
         )
 
+    def build(self, input_shape):
+        self.call(tf.zeros((1, *input_shape[1:])))
+
     def call(self, inputs, **kwargs):
         latent = self._base_model(inputs)
         logits = self._policy_fn(latent)
@@ -71,9 +74,7 @@ class SACPolicy(Policy):
         return actions, logpacs
 
     @tf.function
-    def _step(
-        self, obs: np.ndarray, states: Union[np.ndarray, None] = None, **kwargs
-    ) -> Dict[str, Union[float, np.ndarray]]:
+    def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
         if kwargs.get("uniform_sample", False):
             if self._discrete:
                 actions = tf.random.uniform(
@@ -120,6 +121,14 @@ class SACQFunction(layers.Layer):
             + [layers.Dense(output_units, kernel_initializer=NormcInitializer(0.01))]
         )
 
+    def build(self, input_shape):
+        if self._discrete:
+            self.call(tf.zeros((1, *input_shape[1:])))
+        else:
+            self.call(
+                [tf.zeros((1, *input_shape[0][1:])), tf.zeros((1, *input_shape[1][1:]))]
+            )
+
     def call(self, inputs, **kwargs):
         if self._discrete:
             latent = self._base_model(inputs)
@@ -150,6 +159,10 @@ class TwinQNetwork(layers.Layer):
 
         self.q1 = SACQFunction(observation_space, action_space, network, units)
         self.q2 = SACQFunction(observation_space, action_space, network, units)
+
+    def build(self, input_shape):
+        self.q1.build(input_shape)
+        self.q2.build(input_shape)
 
     def call(self, inputs, **kwargs):
         return self.q1(inputs), self.q2(inputs)

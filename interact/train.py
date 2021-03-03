@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from interact.agents.base import Agent
 from interact.agents.utils import get_agent
-from interact.environments.utils import make_env_fn
+from interact.environments import make_env_fn
 from interact.logging import Logger
 
 
@@ -24,7 +24,7 @@ def train(
     log_dir: Optional[str] = None,
     log_interval: int = 1,
     save_interval: Optional[int] = None,
-    save_at_end: bool = True,
+    episode_window_size: int = 100,
     verbose=True,
 ) -> Agent:
     """Trains an agent by repeatedly executing its `train` method.
@@ -41,7 +41,8 @@ def train(
             with which logs should be saved.
         save_interval: The frequency, in terms of calls to the agent's `train` method,
             with which model weights should be saved.
-        save_at_end: If true, agent weights will be saved at the end of training.
+        episode_window_size: The number of most recent episodes over which episode
+            stats are averaged.
         verbose: A boolean indicating whether or not to display a training progress bar.
 
     Returns:
@@ -58,19 +59,26 @@ def train(
 
     agent_name = agent
     agent = get_agent(agent)(make_env_fn(env_id))
-    agent.setup(total_timesteps)
+    agent.pretrain_setup(total_timesteps)
 
     with open(os.path.join(log_dir, "config.gin"), "w") as fp:
         fp.write(gin.operative_config_str())
 
     checkpoint = tf.train.Checkpoint(agent)
-    ckpt_dir = os.path.join(log_dir, "checkpoints")
-    manager = tf.train.CheckpointManager(checkpoint, ckpt_dir, max_to_keep=1)
+    interval_manager = tf.train.CheckpointManager(
+        checkpoint, os.path.join(log_dir, "checkpoints"), max_to_keep=None
+    )
+    best_manager = tf.train.CheckpointManager(
+        checkpoint,
+        os.path.join(log_dir, "best-weights"),
+        max_to_keep=1,
+        checkpoint_name="best-weights",
+    )
+    best_reward_mean = -np.inf
 
-    ep_info_buf = deque([], maxlen=100)
+    ep_info_buf = deque([], maxlen=episode_window_size)
     metrics = dict()
 
-    curr_timesteps = 0
     update = 0
     pbar = tqdm(total=total_timesteps, desc="Training", disable=not verbose)
     while update * agent.timesteps_per_iteration < total_timesteps:
@@ -96,7 +104,7 @@ def train(
             if ep_info_buf:
                 ep_rewards = [ep_info["reward"] for ep_info in ep_info_buf]
                 ep_lengths = [ep_info["length"] for ep_info in ep_info_buf]
-                episode_data = {
+                scalar_data = {
                     "reward_mean": np.mean(ep_rewards),
                     "reward_min": np.min(ep_rewards),
                     "reward_max": np.max(ep_rewards),
@@ -104,17 +112,23 @@ def train(
                     "length_min": np.min(ep_lengths),
                     "length_max": np.max(ep_lengths),
                 }
-                logger.log_scalars(curr_timesteps, prefix="episode", **episode_data)
+                hist_data = {
+                    "rewards": ep_rewards,
+                    "length": ep_lengths,
+                }
+                logger.log_scalars(curr_timesteps, prefix="episode", **scalar_data)
+                logger.log_histograms(curr_timesteps, prefix="episode", **hist_data)
+
+                if scalar_data["reward_mean"] > best_reward_mean:
+                    best_manager.save(curr_timesteps)
+                    best_reward_mean = scalar_data["reward_mean"]
 
         if save_interval is not None and update % save_interval == 0:
-            manager.save(curr_timesteps)
+            interval_manager.save(curr_timesteps)
 
         pbar.update(agent.timesteps_per_iteration)
 
     pbar.close()
-
-    if save_at_end:
-        manager.save(curr_timesteps)
 
     return agent
 

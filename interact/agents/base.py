@@ -59,7 +59,7 @@ class Agent(ABC, tf.Module):
         """
         pass
 
-    def setup(self, total_timesteps: int):
+    def pretrain_setup(self, total_timesteps: int):
         """Performs any necessary setup before training begins.
 
         This method is always called once before the first call the `train`. Can be
