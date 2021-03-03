@@ -71,7 +71,7 @@ class DQNAgent(Agent):
         prioritized_replay: bool = False,
         prioritized_replay_alpha: float = 0.6,
         prioritized_replay_beta: float = 0.4,
-        final_prioritized_replay_beta: float = 1.0,
+        final_prioritized_replay_beta: float = 4.0,
         prioritized_replay_beta_steps: Optional[int] = None,
         prioritized_replay_epsilon: float = 1e-6,
     ):

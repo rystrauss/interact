@@ -121,6 +121,14 @@ class SACQFunction(layers.Layer):
             + [layers.Dense(output_units, kernel_initializer=NormcInitializer(0.01))]
         )
 
+    def build(self, input_shape):
+        if self._discrete:
+            self.call(tf.zeros((1, *input_shape[1:])))
+        else:
+            self.call(
+                [tf.zeros((1, *input_shape[0][1:])), tf.zeros((1, *input_shape[1][1:]))]
+            )
+
     def call(self, inputs, **kwargs):
         if self._discrete:
             latent = self._base_model(inputs)
@@ -153,7 +161,8 @@ class TwinQNetwork(layers.Layer):
         self.q2 = SACQFunction(observation_space, action_space, network, units)
 
     def build(self, input_shape):
-        self.call(tf.zeros((1, *input_shape[1:])))
+        self.q1.build(input_shape)
+        self.q2.build(input_shape)
 
     def call(self, inputs, **kwargs):
         return self.q1(inputs), self.q2(inputs)

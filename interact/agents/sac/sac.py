@@ -1,4 +1,4 @@
-from typing import Tuple, Dict, List, Union, Callable
+from typing import Tuple, Dict, List, Union, Callable, Optional
 
 import gin
 import gym
@@ -11,7 +11,8 @@ from interact.agents.sac.policy import SACPolicy, TwinQNetwork
 from interact.agents.utils import register
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
-from interact.replay_buffer import ReplayBuffer
+from interact.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from interact.schedules import LinearDecay
 from interact.typing import TensorType
 
 
@@ -22,8 +23,6 @@ class SACAgent(Agent):
 
     This is the more modern version of the algorithm, based on:
     https://arxiv.org/abs/1812.05905
-
-    TODO: Add support for prioritized experience replay.
 
     Args:
         env_fn: A function that, when called, returns an instance of the agent's
@@ -48,6 +47,16 @@ class SACAgent(Agent):
         num_workers: The number of parallel workers to use for experience collection.
         num_envs_per_worker: The number of synchronous environments to be executed in
             each worker.
+        prioritized_replay: If True, a prioritized experience replay will be used.
+        prioritized_replay_alpha: Alpha parameter for prioritized replay.
+        prioritized_replay_beta: Initial beta parameter for prioritized replay.
+        final_prioritized_replay_beta: The final value of the prioritized replay beta
+            parameter.
+        prioritized_replay_beta_steps: Number of steps over which the prioritized
+            replay beta parameter will be annealed. If None, this will be set to the
+            total number of training steps.
+        prioritized_replay_epsilon: Epsilon to add to td-errors when updating
+            priorities.
     """
 
     def __init__(
@@ -69,6 +78,12 @@ class SACAgent(Agent):
         batch_size: int = 256,
         num_workers: int = 1,
         num_envs_per_worker: int = 1,
+        prioritized_replay: bool = False,
+        prioritized_replay_alpha: float = 0.6,
+        prioritized_replay_beta: float = 0.4,
+        final_prioritized_replay_beta: float = 4.0,
+        prioritized_replay_beta_steps: Optional[int] = None,
+        prioritized_replay_epsilon: float = 1e-6,
     ):
         super().__init__(env_fn)
 
@@ -94,12 +109,20 @@ class SACAgent(Agent):
         self.learn_alpha = learn_alpha
         self.target_entropy = target_entropy
         self.gamma = gamma
+        self.buffer_size = buffer_size
         self.train_freq = train_freq
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.num_envs_per_worker = num_envs_per_worker
+        self.prioritized_replay = prioritized_replay
+        self.prioritized_replay_alpha = prioritized_replay_alpha
+        self.prioritized_replay_beta = prioritized_replay_beta
+        self.prioritized_replay_beta_steps = prioritized_replay_beta_steps
+        self.final_prioritized_replay_beta = final_prioritized_replay_beta
+        self.prioritized_replay_epsilon = prioritized_replay_epsilon
 
-        self.buffer = ReplayBuffer(buffer_size)
+        self.replay_buffer = None
+        self.beta_schedule = None
 
         self.policy = SACPolicy(env.observation_space, env.action_space, network)
         self.policy.build([None, *env.observation_space.shape])
@@ -120,13 +143,13 @@ class SACAgent(Agent):
             not isinstance(env.action_space, gym.spaces.Discrete)
             and len(env.observation_space.shape) == 1
         ):
-            q_input_shape = (
-                env.observation_space.shape[0] + env.action_space.shape[0],
-            )
-        else:
-            q_input_shape = env.observation_space.shape
+            q_input_shape = [
+                (None, *env.observation_space.shape),
+                (None, *env.action_space.shape),
+            ]
 
-        q_input_shape = (None, *q_input_shape)
+        else:
+            q_input_shape = (None, *env.observation_space.shape)
 
         self.q_network.build(q_input_shape)
         self.target_q_network.build(q_input_shape)
@@ -154,7 +177,7 @@ class SACAgent(Agent):
         return self.num_envs_per_worker * self.num_workers
 
     @tf.function
-    def _continuous_update(self, obs, actions, rewards, dones, next_obs):
+    def _continuous_update(self, obs, actions, rewards, dones, next_obs, weights):
         # UPDATE CRITIC
         next_actions, next_logpacs = self.policy(next_obs)
 
@@ -162,18 +185,27 @@ class SACAgent(Agent):
         backup = rewards + self.gamma * (1.0 - dones) * (
             q_targets - self.alpha * next_logpacs
         )
+        backup = tf.expand_dims(backup, 1)
 
         with tf.GradientTape() as tape:
             q1_values, q2_values = self.q_network([obs, actions])
+            q1_values = tf.expand_dims(q1_values, 1)
+            q2_values = tf.expand_dims(q2_values, 1)
 
             q1_loss = tf.losses.huber(backup, q1_values)
             q2_loss = tf.losses.huber(backup, q2_values)
+
+            q1_loss = tf.reduce_mean(q1_loss * weights)
+            q2_loss = tf.reduce_mean(q2_loss * weights)
+
             critic_loss = 0.5 * (q1_loss + q2_loss)
 
         grads = tape.gradient(critic_loss, self.q_network.trainable_variables)
         self.critic_optimizer.apply_gradients(
             zip(grads, self.q_network.trainable_variables)
         )
+
+        td_error = ((q1_values - backup) + (q2_values - backup)) / 2
 
         # UPDATE POLICY
         with tf.GradientTape(watch_accessed_variables=False) as tape:
@@ -206,10 +238,10 @@ class SACAgent(Agent):
             "actor_loss": actor_loss,
             "alpha_loss": alpha_loss,
             "alpha": self.alpha,
-        }
+        }, td_error
 
     @tf.function
-    def _discrete_update(self, obs, actions, rewards, dones, next_obs):
+    def _discrete_update(self, obs, actions, rewards, dones, next_obs, weights):
         # UPDATE CRITIC
         _, next_logpacs = self.policy(next_obs)
 
@@ -218,6 +250,7 @@ class SACAgent(Agent):
             tf.exp(next_logpacs) * (q_targets - self.alpha * next_logpacs), axis=-1
         )
         backup = rewards + self.gamma * (1.0 - dones) * q_targets
+        backup = tf.expand_dims(backup, 1)
 
         with tf.GradientTape() as tape:
             q1_values, q2_values = self.q_network(obs)
@@ -226,14 +259,23 @@ class SACAgent(Agent):
             q1_values = tf.gather(q1_values, actions, batch_dims=1)
             q2_values = tf.gather(q2_values, actions, batch_dims=1)
 
+            q1_values = tf.expand_dims(q1_values, 1)
+            q2_values = tf.expand_dims(q2_values, 1)
+
             q1_loss = tf.losses.huber(backup, q1_values)
             q2_loss = tf.losses.huber(backup, q2_values)
+
+            q1_loss = tf.reduce_mean(q1_loss * weights)
+            q2_loss = tf.reduce_mean(q2_loss * weights)
+
             critic_loss = 0.5 * (q1_loss + q2_loss)
 
         grads = tape.gradient(critic_loss, self.q_network.trainable_variables)
         self.critic_optimizer.apply_gradients(
             zip(grads, self.q_network.trainable_variables)
         )
+
+        td_error = ((q1_values - backup) + (q2_values - backup)) / 2
 
         # UPDATE POLICY
         with tf.GradientTape(watch_accessed_variables=False) as tape:
@@ -281,7 +323,7 @@ class SACAgent(Agent):
             "actor_loss": actor_loss,
             "alpha_loss": alpha_loss,
             "alpha": self.alpha,
-        }
+        }, td_error
 
     @tf.function
     def _update_target(self):
@@ -291,28 +333,31 @@ class SACAgent(Agent):
         ):
             target_var.assign(self.tau * q_var + (1 - self.tau) * target_var)
 
-    def _update(self, update, sample):
+    def _update(self, update, sample, weights):
         metrics = dict()
         if self._discrete:
-            metrics.update(
-                self._discrete_update(
-                    sample[SampleBatch.OBS],
-                    sample[SampleBatch.ACTIONS],
-                    sample[SampleBatch.REWARDS],
-                    sample[SampleBatch.DONES],
-                    sample[SampleBatch.NEXT_OBS],
-                )
+            batch_metrics, td_errors = self._discrete_update(
+                sample[SampleBatch.OBS],
+                sample[SampleBatch.ACTIONS],
+                sample[SampleBatch.REWARDS],
+                sample[SampleBatch.DONES],
+                sample[SampleBatch.NEXT_OBS],
+                weights,
             )
+            metrics.update(batch_metrics)
         else:
-            metrics.update(
-                self._continuous_update(
-                    sample[SampleBatch.OBS],
-                    sample[SampleBatch.ACTIONS],
-                    sample[SampleBatch.REWARDS],
-                    sample[SampleBatch.DONES],
-                    sample[SampleBatch.NEXT_OBS],
-                )
+            batch_metrics, td_errors = self._continuous_update(
+                sample[SampleBatch.OBS],
+                sample[SampleBatch.ACTIONS],
+                sample[SampleBatch.REWARDS],
+                sample[SampleBatch.DONES],
+                sample[SampleBatch.NEXT_OBS],
+                weights,
             )
+            metrics.update(batch_metrics)
+
+        if self.prioritized_replay:
+            self.replay_buffer.update_priorities(sample["batch_indices"], td_errors)
 
         if update % self.target_update_interval == 0:
             self._update_target()
@@ -336,16 +381,23 @@ class SACAgent(Agent):
             ),
         )
 
-        self.buffer.add(episodes.to_sample_batch())
+        self.replay_buffer.add(episodes.to_sample_batch())
 
         metrics = dict()
         if (
             update * self.timesteps_per_iteration > self.learning_starts
             and update % self.train_freq == 0
         ):
-            sample = self.buffer.sample(self.batch_size)
+            if self.prioritized_replay:
+                sample = self.replay_buffer.sample(
+                    self.batch_size, self.beta_schedule(update)
+                )
+                weights = sample[SampleBatch.PRIO_WEIGHTS]
+            else:
+                sample = self.replay_buffer.sample(self.batch_size)
+                weights = 1.0
 
-            metrics.update(self._update(update, sample))
+            metrics.update(self._update(update, sample, weights))
 
         return metrics, ep_infos
 
@@ -356,4 +408,17 @@ class SACAgent(Agent):
         self.critic_optimizer = tf.keras.optimizers.Adam(self.critic_lr)
         self.alpha_optimizer = (
             None if not self.learn_alpha else tf.keras.optimizers.Adam(self.entropy_lr)
+        )
+
+        if self.prioritized_replay:
+            self.replay_buffer = PrioritizedReplayBuffer(
+                self.buffer_size, self.prioritized_replay_alpha
+            )
+        else:
+            self.replay_buffer = ReplayBuffer(self.buffer_size)
+
+        self.beta_schedule = LinearDecay(
+            initial_learning_rate=self.prioritized_replay_beta,
+            decay_steps=self.prioritized_replay_beta_steps or total_timesteps,
+            end_learning_rate=self.final_prioritized_replay_beta,
         )
