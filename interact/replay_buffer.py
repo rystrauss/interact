@@ -79,10 +79,18 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         seed: Random seed used by this buffer's PRNG.
     """
 
-    def __init__(self, size: int, alpha: float, seed: Optional[int] = None):
+    def __init__(
+        self,
+        size: int,
+        alpha: float,
+        prioritized_replay_eps: float = 1e-6,
+        seed: Optional[int] = None,
+    ):
         super().__init__(size, seed)
         assert alpha > 0
+        assert prioritized_replay_eps >= 0
         self._alpha = alpha
+        self._prioritized_replay_eps = prioritized_replay_eps
 
         it_capacity = 1
         while it_capacity < size:
@@ -170,8 +178,10 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """
         assert len(indices) == len(priorities)
 
-        for idx, priority in zip(indices, priorities):
-            assert priority > 0
+        new_priorities = np.abs(priorities) + self._prioritized_replay_eps
+
+        for idx, priority in zip(indices, new_priorities):
+            assert priority > 0, priority
             assert 0 <= idx < len(self._storage)
             self._it_sum[idx] = priority ** self._alpha
             self._it_min[idx] = priority ** self._alpha
