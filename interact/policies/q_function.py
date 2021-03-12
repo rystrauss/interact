@@ -127,6 +127,7 @@ class QFunction(layers.Layer):
 
 class TwinQFunction(layers.Layer):
     """Thin wrapper around two "twin" q-functions."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(**kwargs)
 

@@ -13,7 +13,7 @@ from tqdm import tqdm
 from interact.agents.base import Agent
 from interact.agents.utils import get_agent
 from interact.environments import make_env_fn
-from interact.logging import Logger
+from interact.summaries import SummaryLogger
 
 
 @gin.configurable
@@ -55,7 +55,7 @@ def train(
 
     log_dir = os.path.join(log_dir, datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 
-    logger = Logger(log_dir)
+    summary_logger = SummaryLogger(log_dir)
 
     agent_name = agent
     agent = get_agent(agent)(make_env_fn(env_id))
@@ -96,7 +96,9 @@ def train(
         curr_timesteps = agent.timesteps_per_iteration * update
         if update % log_interval == 0:
             metric_results = {k: v.result() for k, v in metrics.items()}
-            logger.log_scalars(curr_timesteps, prefix=agent_name, **metric_results)
+            summary_logger.log_scalars(
+                curr_timesteps, prefix=agent_name, **metric_results
+            )
 
             for metric in metrics.values():
                 metric.reset_states()
@@ -116,8 +118,12 @@ def train(
                     "rewards": ep_rewards,
                     "length": ep_lengths,
                 }
-                logger.log_scalars(curr_timesteps, prefix="episode", **scalar_data)
-                logger.log_histograms(curr_timesteps, prefix="episode", **hist_data)
+                summary_logger.log_scalars(
+                    curr_timesteps, prefix="episode", **scalar_data
+                )
+                summary_logger.log_histograms(
+                    curr_timesteps, prefix="episode", **hist_data
+                )
 
                 if scalar_data["reward_mean"] > best_reward_mean:
                     best_manager.save(curr_timesteps)
@@ -129,6 +135,7 @@ def train(
         pbar.update(agent.timesteps_per_iteration)
 
     pbar.close()
+    summary_logger.close()
 
     return agent
 
