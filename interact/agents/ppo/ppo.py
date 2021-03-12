@@ -87,11 +87,9 @@ class PPOAgent(Agent):
 
         env = self.make_env()
 
-        network_fn = build_network_fn(policy_network, env.observation_space.shape)
-
         def policy_fn():
             return ActorCriticPolicy(
-                env.observation_space, env.action_space, network_fn, value_network
+                env.observation_space, env.action_space, policy_network, value_network
             )
 
         self.policy = policy_fn()

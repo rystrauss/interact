@@ -1,4 +1,4 @@
-from typing import Union, Dict, Callable
+from typing import Union, Dict
 
 import gin
 import gym
@@ -7,7 +7,9 @@ import tensorflow as tf
 from tensorflow_probability import distributions as tfd
 
 from interact.experience.sample_batch import SampleBatch
+from interact.networks import build_network_fn
 from interact.policies.base import Policy
+from interact.policies.q_function import QFunction, TwinQFunction
 from interact.utils.initialization import NormcInitializer
 
 layers = tf.keras.layers
@@ -23,8 +25,7 @@ class ActorCriticPolicy(Policy):
     Args:
         observation_space: The observation space of this policy.
         action_space: The action space of this policy.
-        base_model_fn: A function which returns the model to be used as the base for
-            the policy and value functions.
+        network: The type of network to be built.
         value_network: Either 'shared' or 'copy', indicating whether or not the value
             function should share weights with the policy.
         free_log_std: Use free-floating (i.e. non-state-dependent) variables for the
@@ -35,20 +36,22 @@ class ActorCriticPolicy(Policy):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        base_model_fn: Callable[[], layers.Layer],
+        network: str,
         value_network: str = "copy",
         free_log_std: bool = True,
     ):
         super().__init__(observation_space, action_space)
 
+        network_fn = build_network_fn(network, observation_space.shape)
+
         if value_network == "copy":
-            self._policy_base = base_model_fn()
-            self._value_base = base_model_fn()
+            self._policy_base = network_fn()
+            self._value_base = network_fn()
             self._shared_base = None
         elif value_network == "shared":
             self._policy_base = None
             self._value_base = None
-            self._shared_base = base_model_fn()
+            self._shared_base = network_fn()
         else:
             raise ValueError('`value_network` must be either "copy" or "shared"')
 
@@ -74,6 +77,9 @@ class ActorCriticPolicy(Policy):
             self.is_discrete = False
 
         self._value_fn = layers.Dense(1, kernel_initializer=NormcInitializer(0.01))
+
+    def build(self, input_shape):
+        self.call(tf.zeros((1, *input_shape[1:])))
 
     def make_pdf(self, latent):
         if self.is_discrete:
@@ -117,3 +123,47 @@ class ActorCriticPolicy(Policy):
     @tf.function
     def value(self, inputs, **kwargs):
         return self(inputs, **kwargs)[1]
+
+
+class DeterministicActorCriticPolicy(Policy):
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        network: str,
+        use_twin_critic: bool = False,
+        use_target_critic: bool = True,
+    ):
+        super().__init__(observation_space, action_space)
+        assert isinstance(action_space, gym.spaces.Box), (
+            "DeterministicActorCriticPolicy can only be used with "
+            "continuous action spaces."
+        )
+
+        network_fn = build_network_fn(network, observation_space.shape)
+
+        self.policy = tf.keras.Sequential(
+            [network_fn(), layers.Dense(action_space.shape[0])]
+        )
+
+        q_class = TwinQFunction if use_twin_critic else QFunction
+        self.q_function = q_class(observation_space, action_space, network)
+
+        if use_target_critic:
+            self.target_q_function = q_class(observation_space, action_space, network)
+            self.target_q_function.trainable = False
+        else:
+            self.target_q_function = None
+
+    def build(self, input_shape):
+        self.policy.build(input_shape)
+        self.q_function.build(input_shape)
+        if self.target_q_function is not None:
+            self.target_q_function.build(input_shape)
+            self.target_q_function.set_weights(self.q_function.get_weights())
+
+    @tf.function
+    def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
+        actions = self.policy(obs)
+
+        return {SampleBatch.ACTIONS: actions}
