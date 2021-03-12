@@ -1,0 +1,9 @@
+train.agent = 'ddpg'
+train.env_id = 'Pendulum-v0'
+train.total_timesteps = 100000
+train.log_interval = 100
+
+ddpg.tau = 0.001
+ddpg.buffer_size = 10000
+ddpg.prioritized_replay = True
+ddpg.use_huber = True

@@ -131,13 +131,15 @@ class DeterministicActorCriticPolicy(Policy):
         action_space: gym.Space,
         network: str,
         use_twin_critic: bool = False,
-        use_target_critic: bool = True,
     ):
         super().__init__(observation_space, action_space)
         assert isinstance(action_space, gym.spaces.Box), (
             "DeterministicActorCriticPolicy can only be used with "
             "continuous action spaces."
         )
+
+        self._action_space_low = action_space.low[np.newaxis, ...]
+        self._action_space_high = action_space.high[np.newaxis, ...]
 
         network_fn = build_network_fn(network, observation_space.shape)
 
@@ -148,15 +150,7 @@ class DeterministicActorCriticPolicy(Policy):
         q_class = TwinQFunction if use_twin_critic else QFunction
         self.q_function = q_class(observation_space, action_space, network)
 
-        if use_target_critic:
-            self.target_q_function = q_class(observation_space, action_space, network)
-            self.target_q_function.trainable = False
-        else:
-            self.target_q_function = None
-
         self.policy.build([None, *observation_space.shape])
-        if self.target_q_function is not None:
-            self.target_q_function.set_weights(self.q_function.get_weights())
 
     @tf.function
     def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
@@ -166,6 +160,11 @@ class DeterministicActorCriticPolicy(Policy):
             )
             actions = tf.reshape(actions, [len(obs), -1])
         else:
+            noise_scale = kwargs.get("noise_scale", 0.0)
             actions = self.policy(obs)
+            actions += tf.random.normal(shape=actions.shape, stddev=noise_scale)
+            actions = tf.clip_by_value(
+                actions, self._action_space_low, self._action_space_high
+            )
 
         return {SampleBatch.ACTIONS: actions}

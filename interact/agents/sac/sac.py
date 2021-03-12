@@ -344,9 +344,6 @@ class SACAgent(Agent):
         if self.prioritized_replay:
             self.replay_buffer.update_priorities(sample["batch_indices"], td_errors)
 
-        if update % self.target_update_interval == 0:
-            self._update_target()
-
         if self.num_workers != 1:
             self.runner.update_policies(self.policy.get_weights())
 
@@ -383,6 +380,9 @@ class SACAgent(Agent):
                 weights = 1.0
 
             metrics.update(self._update(update, sample, weights))
+
+        if update % self.target_update_interval == 0:
+            self._update_target()
 
         return metrics, ep_infos
 
