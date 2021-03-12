@@ -9,7 +9,6 @@ from interact.agents.utils import register
 from interact.experience.postprocessing import AdvantagePostprocessor
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
-from interact.networks import build_network_fn
 from interact.policies.actor_critic import ActorCriticPolicy
 from interact.schedules import LinearDecay
 from interact.typing import TensorType
