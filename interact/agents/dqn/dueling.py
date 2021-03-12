@@ -12,9 +12,6 @@ class DuelingAggregator(tf.keras.layers.Layer):
     def __init__(self, **kwargs):
         super(DuelingAggregator, self).__init__(**kwargs)
 
-    def build(self, input_shape):
-        super(DuelingAggregator, self).build(input_shape)
-
     def call(self, inputs, **kwargs):
         value_stream, advantage_stream = inputs
         output_dim = advantage_stream.shape[1]

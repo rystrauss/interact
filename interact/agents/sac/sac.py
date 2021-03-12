@@ -7,10 +7,11 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 from interact.agents.base import Agent
-from interact.agents.sac.policy import SACPolicy, TwinQNetwork
+from interact.agents.sac.policy import SACPolicy
 from interact.agents.utils import register
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
+from interact.policies.q_function import TwinQFunction
 from interact.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from interact.schedules import LinearDecay
 from interact.typing import TensorType
@@ -133,8 +134,8 @@ class SACAgent(Agent):
 
             return SACPolicy(env.observation_space, env.action_space, network)
 
-        self.q_network = TwinQNetwork(env.observation_space, env.action_space, network)
-        self.target_q_network = TwinQNetwork(
+        self.q_network = TwinQFunction(env.observation_space, env.action_space, network)
+        self.target_q_network = TwinQFunction(
             env.observation_space, env.action_space, network
         )
         self.target_q_network.trainable = False
