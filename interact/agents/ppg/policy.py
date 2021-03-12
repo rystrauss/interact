@@ -1,4 +1,4 @@
-from typing import Callable, Union, Dict
+from typing import Union, Dict
 
 import gym
 import numpy as np

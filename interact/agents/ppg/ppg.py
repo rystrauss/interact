@@ -13,7 +13,6 @@ from interact.experience.episode_batch import EpisodeBatch
 from interact.experience.postprocessing import AdvantagePostprocessor
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
-from interact.networks import build_network_fn
 from interact.schedules import LinearDecay
 from interact.typing import TensorType
 from interact.utils.math import explained_variance
