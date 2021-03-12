@@ -15,6 +15,7 @@ from interact.policies.q_function import TwinQFunction
 from interact.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from interact.schedules import LinearDecay
 from interact.typing import TensorType
+from interact.utils.math import polyak_update
 
 
 @gin.configurable("sac", denylist=["env_fn"])
@@ -328,11 +329,9 @@ class SACAgent(Agent):
 
     @tf.function
     def _update_target(self):
-        """Perform Polyak averaging of the target network."""
-        for target_var, q_var in zip(
-            self.target_q_network.variables, self.q_network.variables
-        ):
-            target_var.assign(self.tau * q_var + (1 - self.tau) * target_var)
+        polyak_update(
+            self.q_network.variables, self.target_q_network.variables, self.tau
+        )
 
     def _update(self, update, sample, weights):
         metrics = dict()
