@@ -102,7 +102,6 @@ class PPGAgent(Agent):
             return PPGPolicy(env.observation_space, env.action_space, policy_network)
 
         self.policy = policy_fn()
-        self.policy.build([None, *env.observation_space.shape])
 
         self.runner = None
         self.runner_config = dict(

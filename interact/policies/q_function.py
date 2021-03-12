@@ -28,13 +28,13 @@ class QFunction(layers.Layer):
     """
 
     def __init__(
-        self,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        network: str,
-        dueling: bool = False,
-        output_hidden_units: Tuple[int] = tuple(),
-        **kwargs
+            self,
+            observation_space: gym.Space,
+            action_space: gym.Space,
+            network: str,
+            dueling: bool = False,
+            output_hidden_units: Tuple[int] = tuple(),
+            **kwargs
     ):
         super().__init__(**kwargs)
 
@@ -94,12 +94,14 @@ class QFunction(layers.Layer):
                 ]
             )
 
-    def build(self, input_shape):
         if self._discrete:
-            self.call(tf.zeros((1, *input_shape[1:])))
+            self.call(tf.zeros((1, *observation_space.shape)))
         else:
             self.call(
-                [tf.zeros((1, *input_shape[0][1:])), tf.zeros((1, *input_shape[1][1:]))]
+                [
+                    tf.zeros((1, *observation_space.shape)),
+                    tf.zeros((1, *action_space.shape)),
+                ]
             )
 
     def call(self, inputs, **kwargs):
@@ -133,10 +135,6 @@ class TwinQFunction(layers.Layer):
         self.q1 = QFunction(*args, **kwargs)
         self.q2 = QFunction(*args, **kwargs)
 
-    def build(self, input_shape):
-        self.q1.build(input_shape)
-        self.q2.build(input_shape)
-
     def call(self, inputs, **kwargs):
         return self.q1(inputs), self.q2(inputs)
 
@@ -158,7 +156,8 @@ class DuelingAggregator(tf.keras.layers.Layer):
         value_stream = tf.tile(value_stream, [1, output_dim])
         # This line corresponds to Equation 9 from Wang et. al.
         output = value_stream + (
-            advantage_stream - tf.reduce_mean(advantage_stream, axis=-1, keepdims=True)
+                advantage_stream - tf.reduce_mean(advantage_stream, axis=-1,
+                                                  keepdims=True)
         )
         return output
 

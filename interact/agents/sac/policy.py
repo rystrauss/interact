@@ -35,8 +35,7 @@ class SACPolicy(Policy):
             num_outputs, kernel_initializer=NormcInitializer(0.01)
         )
 
-    def build(self, input_shape):
-        self.call(tf.zeros((1, *input_shape[1:])))
+        self.call(tf.zeros((1, *observation_space.shape)))
 
     def call(self, inputs, **kwargs):
         latent = self._base_model(inputs)

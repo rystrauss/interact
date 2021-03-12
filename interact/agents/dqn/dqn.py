@@ -98,7 +98,6 @@ class DQNAgent(Agent):
 
         env = self.make_env()
         self.policy = DQNPolicy(env.observation_space, env.action_space, q_network)
-        self.policy.build([None, *env.observation_space.shape])
 
         self.optimizer = None
         self.epsilon = None

@@ -78,8 +78,7 @@ class ActorCriticPolicy(Policy):
 
         self._value_fn = layers.Dense(1, kernel_initializer=NormcInitializer(0.01))
 
-    def build(self, input_shape):
-        self.call(tf.zeros((1, *input_shape[1:])))
+        self.call(tf.zeros((1, *observation_space.shape)))
 
     def make_pdf(self, latent):
         if self.is_discrete:
@@ -94,7 +93,7 @@ class ActorCriticPolicy(Policy):
             pi = tfd.MultivariateNormalDiag(mu, tf.exp(logstd))
         return pi
 
-    def call(self, inputs, **kwargs):
+    def call(self, inputs):
         if self._shared_base is None:
             policy_latent = self._policy_base(inputs)
             value_latent = self._value_base(inputs)
@@ -121,8 +120,8 @@ class ActorCriticPolicy(Policy):
         }
 
     @tf.function
-    def value(self, inputs, **kwargs):
-        return self(inputs, **kwargs)[1]
+    def value(self, inputs):
+        return self(inputs)[1]
 
 
 class DeterministicActorCriticPolicy(Policy):
@@ -155,15 +154,18 @@ class DeterministicActorCriticPolicy(Policy):
         else:
             self.target_q_function = None
 
-    def build(self, input_shape):
-        self.policy.build(input_shape)
-        self.q_function.build(input_shape)
+        self.policy.build([None, *observation_space.shape])
         if self.target_q_function is not None:
-            self.target_q_function.build(input_shape)
             self.target_q_function.set_weights(self.q_function.get_weights())
 
     @tf.function
     def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
-        actions = self.policy(obs)
+        if kwargs.get("uniform_sample", False):
+            actions = tf.random.uniform(
+                [len(obs)], self.action_space.low, self.action_space.high
+            )
+            actions = tf.reshape(actions, [len(obs), -1])
+        else:
+            actions = self.policy(obs)
 
         return {SampleBatch.ACTIONS: actions}

@@ -92,7 +92,6 @@ class PPOAgent(Agent):
             )
 
         self.policy = policy_fn()
-        self.policy.build([None, *env.observation_space.shape])
 
         self.runner = None
         self.runner_config = dict(

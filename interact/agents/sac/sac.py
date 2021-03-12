@@ -127,7 +127,6 @@ class SACAgent(Agent):
         self.beta_schedule = None
 
         self.policy = SACPolicy(env.observation_space, env.action_space, network)
-        self.policy.build([None, *env.observation_space.shape])
 
         def policy_fn():
             if num_workers == 1:
@@ -141,20 +140,6 @@ class SACAgent(Agent):
         )
         self.target_q_network.trainable = False
 
-        if (
-            not isinstance(env.action_space, gym.spaces.Discrete)
-            and len(env.observation_space.shape) == 1
-        ):
-            q_input_shape = [
-                (None, *env.observation_space.shape),
-                (None, *env.action_space.shape),
-            ]
-
-        else:
-            q_input_shape = (None, *env.observation_space.shape)
-
-        self.q_network.build(q_input_shape)
-        self.target_q_network.build(q_input_shape)
         self.target_q_network.set_weights(self.q_network.get_weights())
 
         self.actor_optimizer = None

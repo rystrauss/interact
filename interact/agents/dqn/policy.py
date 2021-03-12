@@ -36,9 +36,6 @@ class DQNPolicy(Policy):
         self.target_network = QFunction(observation_space, action_space, network)
         self.target_network.trainable = False
 
-    def build(self, input_shape):
-        self.q_network.build(input_shape)
-        self.target_network.build(input_shape)
         self.update_target_network()
 
     @tf.function

@@ -37,9 +37,7 @@ class PPGPolicy(ActorCriticPolicy):
             self.policy_weights + self._aux_value_fn.trainable_weights
         )
 
-    def build(self, input_shape):
-        super(PPGPolicy, self).build(input_shape)
-        self.auxiliary_heads(tf.zeros([1, *input_shape[1:]]))
+        self.auxiliary_heads(tf.zeros([1, *observation_space.shape]))
 
     @tf.function
     def policy_logits(self, obs):
