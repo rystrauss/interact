@@ -9,7 +9,7 @@ from interact.experience.sample_batch import SampleBatch
 from interact.networks import build_network_fn
 from interact.policies.base import Policy
 from interact.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, SMALL_NUMBER
-from interact.utils.math_utils import NormcInitializer
+from interact.utils.initialization import NormcInitializer
 
 layers = tf.keras.layers
 

@@ -7,7 +7,7 @@ from tensorflow.keras import layers
 
 from interact.agents.dqn.dueling import DuelingAggregator
 from interact.networks import build_network_fn
-from interact.utils.math_utils import NormcInitializer
+from interact.utils.initialization import NormcInitializer
 
 
 @gin.configurable(allowlist=["dueling", "output_hidden_units"])

@@ -16,7 +16,7 @@ from interact.experience.sample_batch import SampleBatch
 from interact.networks import build_network_fn
 from interact.schedules import LinearDecay
 from interact.typing import TensorType
-from interact.utils.math_utils import explained_variance
+from interact.utils.math import explained_variance
 
 
 @gin.configurable(name_or_fn="ppg", denylist=["env_fn"])
