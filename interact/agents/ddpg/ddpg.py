@@ -44,6 +44,7 @@ class DDPGAgent(Agent):
         final_noise_scale: float = 0.1,
         noise_scale_steps: Optional[int] = None,
         use_huber: bool = False,
+        use_twin_critic: bool = False,
     ):
         super().__init__(env_fn)
 
@@ -74,12 +75,13 @@ class DDPGAgent(Agent):
         self.final_noise_scale = final_noise_scale
         self.noise_scale_steps = noise_scale_steps
         self.use_huber = use_huber
+        self.use_twin_critic = use_twin_critic
 
         self.actor_critic = DeterministicActorCriticPolicy(
-            env.observation_space, env.action_space, network
+            env.observation_space, env.action_space, network, use_twin_critic
         )
         self.target_actor_critic = DeterministicActorCriticPolicy(
-            env.observation_space, env.action_space, network
+            env.observation_space, env.action_space, network, use_twin_critic
         )
         self.target_actor_critic.set_weights(self.actor_critic.get_weights())
 
@@ -88,7 +90,7 @@ class DDPGAgent(Agent):
                 return self.actor_critic
 
             return DeterministicActorCriticPolicy(
-                env.observation_space, env.action_space, network
+                env.observation_space, env.action_space, network, use_twin_critic
             )
 
         self.runner = None
@@ -141,16 +143,33 @@ class DDPGAgent(Agent):
 
     @tf.function
     def _update(self, obs, actions, rewards, dones, next_obs, weights):
-        target_pi_q_values = self.target_actor_critic.q_function(
-            [next_obs, self.target_actor_critic(next_obs)]
-        )
+        if self.use_twin_critic:
+            target_pi_q_values = tf.minimum(
+                *self.target_actor_critic.q_function(
+                    [next_obs, self.target_actor_critic(next_obs)]
+                )
+            )
+        else:
+            target_pi_q_values = self.target_actor_critic.q_function(
+                [next_obs, self.target_actor_critic(next_obs)]
+            )
         backup = rewards + self.gamma * (1 - dones) * target_pi_q_values
 
         loss_fn = tf.losses.huber if self.use_huber else tf.losses.mse
 
         with tf.GradientTape() as tape:
-            q_values = self.actor_critic.q_function([obs, actions])
-            critic_loss = loss_fn(backup[:, tf.newaxis], q_values[:, tf.newaxis])
+            if self.use_twin_critic:
+                q1_values, q2_values = self.actor_critic.q_function([obs, actions])
+                q1_loss = loss_fn(backup[:, tf.newaxis], q1_values[:, tf.newaxis])
+                q2_loss = loss_fn(backup[:, tf.newaxis], q2_values[:, tf.newaxis])
+                critic_loss = q1_loss + q2_loss
+            else:
+                q_values = self.actor_critic.q_function([obs, actions])
+                critic_loss = loss_fn(backup[:, tf.newaxis], q_values[:, tf.newaxis])
+
+            if not self.use_huber:
+                critic_loss *= 0.5
+
             critic_loss = tf.reduce_mean(critic_loss * weights)
 
         grads = tape.gradient(
@@ -160,14 +179,22 @@ class DDPGAgent(Agent):
             zip(grads, self.actor_critic.q_function.trainable_variables)
         )
 
-        td_error = backup - q_values
+        if self.use_twin_critic:
+            td_error = 0.5 * ((q1_values - backup) + (q2_values - backup))
+        else:
+            td_error = q_values - backup
 
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self.actor_critic.policy.trainable_weights)
 
-            pi_q_values = self.actor_critic.q_function(
-                [obs, self.actor_critic(obs)]
-            )
+            if self.use_twin_critic:
+                pi_q_values = tf.minimum(
+                    *self.actor_critic.q_function([obs, self.actor_critic(obs)])
+                )
+            else:
+                pi_q_values = self.actor_critic.q_function(
+                    [obs, self.actor_critic(obs)]
+                )
             actor_loss = -tf.reduce_mean(pi_q_values)
 
         grads = tape.gradient(actor_loss, self.actor_critic.policy.trainable_variables)
@@ -184,14 +211,14 @@ class DDPGAgent(Agent):
         )
 
     def train(self, update: int) -> Tuple[Dict[str, float], List[Dict]]:
+        cur_noise_scale = self.noise_schedule(update)
+
         episodes, ep_infos = self.runner.run(
             1,
             # In the beginning, randomly select actions from a uniform distribution
             # for better exploration.
-            uniform_sample=(
-                update * self.timesteps_per_iteration <= self.random_steps
-            ),
-            noise_scale=self.noise_schedule(update),
+            uniform_sample=(update * self.timesteps_per_iteration <= self.random_steps),
+            noise_scale=cur_noise_scale,
         )
 
         self.replay_buffer.add(episodes.to_sample_batch())
@@ -225,7 +252,6 @@ class DDPGAgent(Agent):
                         sample["batch_indices"], td_errors
                     )
 
-            # TODO: Average over loop.
             metrics.update(batch_metrics)
 
             if self.num_workers != 1:
@@ -233,5 +259,7 @@ class DDPGAgent(Agent):
 
         if update % self.target_update_interval == 0:
             self._update_target()
+
+        metrics["noise_scale"] = cur_noise_scale
 
         return metrics, ep_infos
