@@ -139,7 +139,7 @@ class DDPGAgent(Agent):
     @tf.function
     def _update(self, obs, actions, rewards, dones, next_obs, weights):
         target_pi_q_values = self.target_actor_critic.q_function(
-            [next_obs, self.target_actor_critic.policy(next_obs)]
+            [next_obs, self.target_actor_critic(next_obs)]
         )
         backup = rewards + self.gamma * (1 - dones) * target_pi_q_values
 
@@ -163,7 +163,7 @@ class DDPGAgent(Agent):
             tape.watch(self.actor_critic.policy.trainable_weights)
 
             pi_q_values = self.actor_critic.q_function(
-                [obs, self.actor_critic.policy(obs)]
+                [obs, self.actor_critic(obs)]
             )
             actor_loss = -tf.reduce_mean(pi_q_values)
 

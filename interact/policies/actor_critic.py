@@ -138,33 +138,53 @@ class DeterministicActorCriticPolicy(Policy):
             "continuous action spaces."
         )
 
-        self._action_space_low = action_space.low[np.newaxis, ...]
-        self._action_space_high = action_space.high[np.newaxis, ...]
+        self._action_space_low = action_space.low[np.newaxis]
+        self._action_space_high = action_space.high[np.newaxis]
 
         network_fn = build_network_fn(network, observation_space.shape)
 
-        self.policy = tf.keras.Sequential(
-            [network_fn(), layers.Dense(action_space.shape[0])]
-        )
+        def squash(x):
+            x = tf.nn.sigmoid(2 * x)
+            return (
+                self._action_space_high - self._action_space_low
+            ) * x + self._action_space_low
+
+        policy_layers = [
+            network_fn(),
+            layers.Dense(action_space.shape[0]),
+        ]
+
+        bounded = np.logical_and(
+            action_space.bounded_above, action_space.bounded_below
+        ).any()
+
+        if bounded:
+            policy_layers.append(layers.Lambda(squash))
+
+        self.policy = tf.keras.Sequential(policy_layers)
 
         q_class = TwinQFunction if use_twin_critic else QFunction
         self.q_function = q_class(observation_space, action_space, network)
 
         self.policy.build([None, *observation_space.shape])
 
+    def call(self, inputs, **kwargs):
+        noise_scale = kwargs.get("noise_scale", 0.0)
+        actions = self.policy(inputs)
+        if noise_scale != 0.0:
+            actions += tf.random.normal(shape=actions.shape, stddev=noise_scale)
+        actions = tf.clip_by_value(
+            actions, self._action_space_low, self._action_space_high
+        )
+        return actions
+
     @tf.function
     def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
         if kwargs.get("uniform_sample", False):
             actions = tf.random.uniform(
-                [len(obs)], self.action_space.low, self.action_space.high
+                [len(obs)], self._action_space_low, self._action_space_high
             )
-            actions = tf.reshape(actions, [len(obs), -1])
         else:
-            noise_scale = kwargs.get("noise_scale", 0.0)
-            actions = self.policy(obs)
-            actions += tf.random.normal(shape=actions.shape, stddev=noise_scale)
-            actions = tf.clip_by_value(
-                actions, self._action_space_low, self._action_space_high
-            )
+            actions = self.call(obs, **kwargs)
 
         return {SampleBatch.ACTIONS: actions}
