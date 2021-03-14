@@ -13,6 +13,7 @@ from tqdm import tqdm
 from interact.agents.base import Agent
 from interact.agents.utils import get_agent
 from interact.environments import make_env_fn
+from interact.evaluation import evaluate
 from interact.summaries import SummaryLogger
 
 
@@ -26,6 +27,8 @@ def train(
     save_interval: Optional[int] = None,
     episode_window_size: int = 100,
     verbose=True,
+    evaluation_interval: Optional[int] = None,
+    evaluation_num_episodes: int = 10,
 ) -> Agent:
     """Trains an agent by repeatedly executing its `train` method.
 
@@ -44,6 +47,13 @@ def train(
         episode_window_size: The number of most recent episodes over which episode
             stats are averaged.
         verbose: A boolean indicating whether or not to display a training progress bar.
+        evaluation_interval: The frequency, in terms of calls to the agent's `train`
+            method, with which the agent will be evaluated. Actions are selected
+            deterministically during evaluation, so the evaluation scores can be more
+            informative than the training scores for some agents. If this is None,
+            evaluations are not performed during training.
+        evaluation_num_episodes: The number of episodes to complete each time the agent
+            is evaluated.
 
     Returns:
         The trained agent.
@@ -78,6 +88,8 @@ def train(
 
     ep_info_buf = deque([], maxlen=episode_window_size)
     metrics = dict()
+
+    evaluation_env = None if evaluation_interval is None else agent.make_env()
 
     update = 0
     pbar = tqdm(total=total_timesteps, desc="Training", disable=not verbose)
@@ -131,6 +143,30 @@ def train(
 
         if save_interval is not None and update % save_interval == 0:
             interval_manager.save(curr_timesteps)
+
+        if evaluation_interval is not None and update % evaluation_interval == 0:
+            eval_rewards, eval_lengths = evaluate(
+                agent, evaluation_env, evaluation_num_episodes
+            )
+
+            eval_scalars = {
+                "reward_mean": np.mean(eval_rewards),
+                "reward_min": np.min(eval_rewards),
+                "reward_max": np.max(eval_rewards),
+                "length_mean": np.mean(eval_lengths),
+                "length_min": np.min(eval_lengths),
+                "length_max": np.max(eval_lengths),
+            }
+            eval_hist = {
+                "rewards": eval_rewards,
+                "length": eval_lengths,
+            }
+            summary_logger.log_scalars(
+                curr_timesteps, prefix="evaluation", **eval_scalars
+            )
+            summary_logger.log_histograms(
+                curr_timesteps, prefix="evaluation", **eval_hist
+            )
 
         pbar.update(agent.timesteps_per_iteration)
 

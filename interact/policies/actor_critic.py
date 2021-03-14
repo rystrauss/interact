@@ -125,6 +125,18 @@ class ActorCriticPolicy(Policy):
 
 
 class DeterministicActorCriticPolicy(Policy):
+    """A generic implementation of a deterministic Actor-Critic policy.
+
+    This policy is generally used for algorithms in the DDPG family.
+
+    Args:
+        observation_space: The observation space of this policy.
+        action_space: The action space of this policy.
+        network: The type of network to be built.
+        use_twin_critic: If True, the policy's `q_function` will be an instance of the
+            `TwinQFunction` class.
+    """
+
     def __init__(
         self,
         observation_space: gym.Space,
@@ -173,9 +185,9 @@ class DeterministicActorCriticPolicy(Policy):
         actions = self.policy(inputs)
         if noise_scale != 0.0:
             actions += tf.random.normal(shape=actions.shape, stddev=noise_scale)
-        actions = tf.clip_by_value(
-            actions, self._action_space_low, self._action_space_high
-        )
+            actions = tf.clip_by_value(
+                actions, self._action_space_low, self._action_space_high
+            )
         return actions
 
     @tf.function

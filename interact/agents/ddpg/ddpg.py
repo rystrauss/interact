@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import Tuple, Dict, List, Callable, Optional
 
 import gin
@@ -26,6 +25,7 @@ class DDPGAgent(Agent):
         critic_lr: float = 1e-3,
         actor_lr: float = 1e-3,
         learning_starts: int = 1500,
+        random_steps: int = 1500,
         target_update_interval: int = 1,
         tau: float = 0.002,
         gamma: float = 0.95,
@@ -55,6 +55,7 @@ class DDPGAgent(Agent):
         self.actor_lr = actor_lr
         self.critic_lr = critic_lr
         self.learning_starts = learning_starts
+        self.random_steps = random_steps
         self.target_update_interval = target_update_interval
         self.tau = tau
         self.gamma = gamma
@@ -133,8 +134,10 @@ class DDPGAgent(Agent):
             end_learning_rate=self.initial_noise_scale,
         )
 
+    @tf.function
     def act(self, obs: TensorType, deterministic: bool = True) -> TensorType:
-        pass
+        assert deterministic, "Non-deterministic actions not supported for DDPG."
+        return self.actor_critic(obs)
 
     @tf.function
     def _update(self, obs, actions, rewards, dones, next_obs, weights):
@@ -186,7 +189,7 @@ class DDPGAgent(Agent):
             # In the beginning, randomly select actions from a uniform distribution
             # for better exploration.
             uniform_sample=(
-                update * self.timesteps_per_iteration <= self.learning_starts
+                update * self.timesteps_per_iteration <= self.random_steps
             ),
             noise_scale=self.noise_schedule(update),
         )
