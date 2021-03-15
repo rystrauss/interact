@@ -33,7 +33,7 @@ class Policy(ABC, tf.keras.layers.Layer):
         data = self._step(obs, **kwargs)
 
         assert (
-            "actions" in data
+            SampleBatch.ACTIONS in data
         ), f'Dictionary returned by `_step` must contain the key "actions"'
 
         return data

@@ -150,16 +150,16 @@ class DeterministicActorCriticPolicy(Policy):
             "continuous action spaces."
         )
 
-        self._action_space_low = action_space.low[np.newaxis]
-        self._action_space_high = action_space.high[np.newaxis]
+        self.action_space_low = action_space.low[np.newaxis]
+        self.action_space_high = action_space.high[np.newaxis]
 
         network_fn = build_network_fn(network, observation_space.shape)
 
         def squash(x):
             x = tf.nn.sigmoid(2 * x)
             return (
-                self._action_space_high - self._action_space_low
-            ) * x + self._action_space_low
+                self.action_space_high - self.action_space_low
+            ) * x + self.action_space_low
 
         policy_layers = [
             network_fn(),
@@ -186,7 +186,7 @@ class DeterministicActorCriticPolicy(Policy):
         if noise_scale != 0.0:
             actions += tf.random.normal(shape=actions.shape, stddev=noise_scale)
             actions = tf.clip_by_value(
-                actions, self._action_space_low, self._action_space_high
+                actions, self.action_space_low, self.action_space_high
             )
         return actions
 
@@ -194,7 +194,7 @@ class DeterministicActorCriticPolicy(Policy):
     def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
         if kwargs.get("uniform_sample", False):
             actions = tf.random.uniform(
-                [len(obs)], self._action_space_low, self._action_space_high
+                [len(obs)], self.action_space_low, self.action_space_high
             )
         else:
             actions = self.call(obs, **kwargs)
