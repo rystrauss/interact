@@ -28,13 +28,13 @@ class QFunction(layers.Layer):
     """
 
     def __init__(
-            self,
-            observation_space: gym.Space,
-            action_space: gym.Space,
-            network: str,
-            dueling: bool = False,
-            output_hidden_units: Tuple[int] = tuple(),
-            **kwargs
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        network: str,
+        dueling: bool = False,
+        output_hidden_units: Tuple[int] = tuple(),
+        **kwargs
     ):
         super().__init__(**kwargs)
 
@@ -156,8 +156,7 @@ class DuelingAggregator(tf.keras.layers.Layer):
         value_stream = tf.tile(value_stream, [1, output_dim])
         # This line corresponds to Equation 9 from Wang et. al.
         output = value_stream + (
-                advantage_stream - tf.reduce_mean(advantage_stream, axis=-1,
-                                                  keepdims=True)
+            advantage_stream - tf.reduce_mean(advantage_stream, axis=-1, keepdims=True)
         )
         return output
 

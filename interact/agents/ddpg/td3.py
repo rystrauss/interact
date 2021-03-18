@@ -10,6 +10,59 @@ from interact.agents.utils import register
 @gin.configurable(name_or_fn="td3", denylist=["env_fn"])
 @register("td3")
 class TD3Agent(DDPGAgent):
+    """The Twin Delayed DDPG (TD3) algorithm.
+
+    This algorithm is a minor modification of DDPG. This class is merely a wrapper
+    around DDPG with the TD3 features enabled by default. Namely, TD3 uses twin
+    critic networks, delayed policy updates, and target policy smoothing.
+
+    Args:
+        env_fn: A function that, when called, returns an instance of the agent's
+            environment.
+        network: Base network type to be used by the policy and Q-functions.
+        actor_lr: Learning rate to use for updating the actor.
+        critic_lr: Learning rate to use for updating the critics.
+        tau: Parameter for the polyak averaging used to update the target networks.
+        target_update_interval: Frequency with which the target Q-networks are updated.
+        gamma: The discount factor.
+        buffer_size: The maximum size of the replay buffer.
+        train_freq: The frequency with which training updates are performed.
+        target_update_interval: The frequency with which the target network is updated.
+        learning_starts: The number of timesteps after which learning starts.
+        random_steps: Actions will be sampled completely at random for this many
+            timesteps at the beginning of training.
+        batch_size: The size of batches sampled from the replay buffer over which
+            updates are performed.
+        num_workers: The number of parallel workers to use for experience collection.
+        num_envs_per_worker: The number of synchronous environments to be executed in
+            each worker.
+        prioritized_replay: If True, a prioritized experience replay will be used.
+        prioritized_replay_alpha: Alpha parameter for prioritized replay.
+        prioritized_replay_beta: Initial beta parameter for prioritized replay.
+        final_prioritized_replay_beta: The final value of the prioritized replay beta
+            parameter.
+        prioritized_replay_beta_steps: Number of steps over which the prioritized
+            replay beta parameter will be annealed. If None, this will be set to the
+            total number of training steps.
+        prioritized_replay_epsilon: Epsilon to add to td-errors when updating
+            priorities.
+        initial_noise_scale: The initial scale of the Gaussian noise that is added to
+            actions for exploration.
+        final_noise_scale: The final scale of the Gaussian noise that is added to
+            actions for exploration.
+        noise_scale_steps: The number of timesteps over which the amount of exploration
+            noise is annealed from `initial_noise_scale` to `final_noise_scale`. If
+            None, the total duration of training is used.
+        use_huber: If True, the Huber loss is used in favor of MSE for critic updates.
+        use_twin_critic: If True, twin critic networks are used.
+        policy_delay: The policy is updated once for every `policy_delay` critic
+            updates.
+        smooth_target_policy: If true, target policy smoothing is used in the critic
+            updates.
+        target_noise: The amount of target noise that is used for smoothing.
+        target_noise_clip: The value at which target noise is clipped.
+    """
+
     def __init__(
         self,
         env_fn: Callable[[], gym.Env],

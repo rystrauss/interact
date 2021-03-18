@@ -18,19 +18,71 @@ from interact.utils.math import polyak_update
 @gin.configurable(name_or_fn="ddpg", denylist=["env_fn"])
 @register("ddpg")
 class DDPGAgent(Agent):
+    """The deep deterministic policy gradients algorithm.
+
+    This implementation also makes available the features that constitute the
+    Twin Delayed DDPG (TD3) algorithm, although they are disabled by default.
+
+    Args:
+        env_fn: A function that, when called, returns an instance of the agent's
+            environment.
+        network: Base network type to be used by the policy and Q-functions.
+        actor_lr: Learning rate to use for updating the actor.
+        critic_lr: Learning rate to use for updating the critics.
+        tau: Parameter for the polyak averaging used to update the target networks.
+        target_update_interval: Frequency with which the target Q-networks are updated.
+        gamma: The discount factor.
+        buffer_size: The maximum size of the replay buffer.
+        train_freq: The frequency with which training updates are performed.
+        target_update_interval: The frequency with which the target network is updated.
+        learning_starts: The number of timesteps after which learning starts.
+        random_steps: Actions will be sampled completely at random for this many
+            timesteps at the beginning of training.
+        batch_size: The size of batches sampled from the replay buffer over which
+            updates are performed.
+        num_workers: The number of parallel workers to use for experience collection.
+        num_envs_per_worker: The number of synchronous environments to be executed in
+            each worker.
+        prioritized_replay: If True, a prioritized experience replay will be used.
+        prioritized_replay_alpha: Alpha parameter for prioritized replay.
+        prioritized_replay_beta: Initial beta parameter for prioritized replay.
+        final_prioritized_replay_beta: The final value of the prioritized replay beta
+            parameter.
+        prioritized_replay_beta_steps: Number of steps over which the prioritized
+            replay beta parameter will be annealed. If None, this will be set to the
+            total number of training steps.
+        prioritized_replay_epsilon: Epsilon to add to td-errors when updating
+            priorities.
+        initial_noise_scale: The initial scale of the Gaussian noise that is added to
+            actions for exploration.
+        final_noise_scale: The final scale of the Gaussian noise that is added to
+            actions for exploration.
+        noise_scale_steps: The number of timesteps over which the amount of exploration
+            noise is annealed from `initial_noise_scale` to `final_noise_scale`. If
+            None, the total duration of training is used.
+        use_huber: If True, the Huber loss is used in favor of MSE for critic updates.
+        use_twin_critic: If True, twin critic networks are used.
+        policy_delay: The policy is updated once for every `policy_delay` critic
+            updates.
+        smooth_target_policy: If true, target policy smoothing is used in the critic
+            updates.
+        target_noise: The amount of target noise that is used for smoothing.
+        target_noise_clip: The value at which target noise is clipped.
+    """
+
     def __init__(
         self,
         env_fn: Callable[[], gym.Env],
         network: str = "mlp",
-        critic_lr: float = 1e-3,
         actor_lr: float = 1e-3,
-        learning_starts: int = 1500,
-        random_steps: int = 1500,
-        target_update_interval: int = 1,
+        critic_lr: float = 1e-3,
         tau: float = 0.002,
         gamma: float = 0.95,
         buffer_size: int = 50000,
         train_freq: int = 1,
+        target_update_interval: int = 1,
+        learning_starts: int = 1500,
+        random_steps: int = 1500,
         batch_size: int = 256,
         num_workers: int = 1,
         num_envs_per_worker: int = 1,
@@ -206,7 +258,12 @@ class DDPGAgent(Agent):
             td_error = q_values - backup
 
         if not update_policy:
-            return {"critic_loss": critic_loss}, td_error
+            return {
+                "critic_loss": critic_loss,
+                "mean_q": tf.reduce_mean(q_values),
+                "min_q": tf.reduce_min(q_values),
+                "max_q": tf.reduce_max(q_values),
+            }, td_error
 
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self.actor_critic.policy.trainable_weights)
@@ -226,7 +283,13 @@ class DDPGAgent(Agent):
             zip(grads, self.actor_critic.policy.trainable_variables)
         )
 
-        return {"critic_loss": critic_loss, "actor_loss": actor_loss}, td_error
+        return {
+            "critic_loss": critic_loss,
+            "mean_q": tf.reduce_mean(q_values),
+            "min_q": tf.reduce_min(q_values),
+            "max_q": tf.reduce_max(q_values),
+            "actor_loss": actor_loss,
+        }, td_error
 
     @tf.function
     def _update_target(self):
