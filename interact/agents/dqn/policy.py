@@ -1,75 +1,14 @@
 from typing import Union, Dict
 
-import gin
 import gym
 import numpy as np
 import tensorflow as tf
 
-from interact.agents.dqn.dueling import DuelingAggregator
 from interact.experience.sample_batch import SampleBatch
-from interact.networks import build_network_fn
 from interact.policies.base import Policy
-from interact.utils.math_utils import NormcInitializer
+from interact.policies.q_function import QFunction
 
 layers = tf.keras.layers
-
-
-@gin.configurable(allowlist=["dueling", "dueling_hidden_units"])
-class QNetwork(tf.keras.Model):
-    """A `tf.keras.Model` version of a Q-Network.
-
-    This model has the option of using the dueling network architecture.
-
-    Args:
-        observation_space: The observation space of this policy.
-        action_space: The action space of this policy.
-        network: The type of network to use (e.g. 'cnn', 'mlp').
-        dueling: A boolean indicating whether or not to use the dueling architecture.
-        dueling_hidden_units: The number of hidden units in the first layer of each
-            stream in the dueling network. Only applicable if `dueling` is True.
-    """
-
-    def __init__(
-        self,
-        observation_space: gym.Space,
-        action_space: gym.Space,
-        network: str,
-        dueling: bool = False,
-        dueling_hidden_units: int = 64,
-    ):
-        assert isinstance(
-            action_space, gym.spaces.Discrete
-        ), "only discrete actions spaces can be used with a QNetwork"
-
-        base_model = build_network_fn(network, observation_space.shape)()
-        h = base_model.outputs[0]
-
-        if dueling:
-            value_stream = layers.Dense(
-                dueling_hidden_units,
-                activation="relu",
-                kernel_initializer=NormcInitializer(),
-            )(h)
-            value_stream = layers.Dense(1, kernel_initializer=NormcInitializer(0.01))(
-                value_stream
-            )
-
-            advantage_stream = layers.Dense(
-                dueling_hidden_units,
-                activation="relu",
-                kernel_initializer=NormcInitializer(),
-            )(h)
-            advantage_stream = layers.Dense(
-                action_space.n, kernel_initializer=NormcInitializer(0.01)
-            )(advantage_stream)
-
-            q_values = DuelingAggregator()([value_stream, advantage_stream])
-        else:
-            q_values = layers.Dense(
-                action_space.n, kernel_initializer=NormcInitializer(0.01)
-            )(h)
-
-        super().__init__(inputs=base_model.inputs, outputs=[q_values])
 
 
 class DQNPolicy(Policy):
@@ -93,12 +32,10 @@ class DQNPolicy(Policy):
         assert isinstance(action_space, gym.spaces.Discrete)
         super().__init__(observation_space, action_space)
 
-        self.q_network = QNetwork(observation_space, action_space, network)
-        self.target_network = QNetwork(observation_space, action_space, network)
+        self.q_network = QFunction(observation_space, action_space, network)
+        self.target_network = QFunction(observation_space, action_space, network)
         self.target_network.trainable = False
 
-    def build(self, input_shape):
-        super(DQNPolicy, self).build(input_shape)
         self.update_target_network()
 
     @tf.function

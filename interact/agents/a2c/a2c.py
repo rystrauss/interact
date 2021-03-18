@@ -9,11 +9,10 @@ from interact.agents.utils import register
 from interact.experience.postprocessing import AdvantagePostprocessor
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
-from interact.networks import build_network_fn
 from interact.policies.actor_critic import ActorCriticPolicy
 from interact.schedules import LinearDecay
 from interact.typing import TensorType
-from interact.utils.math_utils import explained_variance
+from interact.utils.math import explained_variance
 
 
 @gin.configurable(name_or_fn="a2c", denylist=["env_fn"])
@@ -76,15 +75,12 @@ class A2CAgent(Agent):
 
         env = self.make_env()
 
-        network_fn = build_network_fn(policy_network, env.observation_space.shape)
-
         def policy_fn():
             return ActorCriticPolicy(
-                env.observation_space, env.action_space, network_fn, value_network
+                env.observation_space, env.action_space, policy_network, value_network
             )
 
         self.policy = policy_fn()
-        self.policy.build([None, *env.observation_space.shape])
 
         self.runner = None
         self.runner_config = dict(

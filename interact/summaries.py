@@ -1,27 +1,13 @@
 import os
-from enum import Enum
 
 import tensorflow as tf
 
 
-class Colors(Enum):
-    """Colors that can be used to colorize text in the console.
-
-    These colors should be passed to `Logger.log`.
-    """
-
-    PINK = "\033[95m"
-    BLUE = "\033[94m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    RED = "\033[91m"
-
-
-class Logger:
-    """A utility for logging messages and data.
+class SummaryLogger:
+    """A utility for logging Tensorboard summaries.
 
     Args:
-        dir: The directory to which logs will be saved.
+        dir: The directory to which summaries will be saved.
     """
 
     def __init__(self, dir):
@@ -88,21 +74,3 @@ class Logger:
         """
         if self._summary_writer is not None:
             self._summary_writer.close()
-
-
-def printc(color, *args, **kwargs):
-    """Prints a colorized message to the console.
-
-    Args:
-        color: The color of the message. Should be a member of the `Colors` enum.
-        *args: The arguments to be passed to the built-in print function.
-        **kwargs: The keyword arguments to be passed to the built-in print function.
-
-    Returns:
-        None.
-    """
-    assert isinstance(color, Colors)
-    args = [*args]
-    args[0] = color.value + args[0]
-    args[-1] = args[-1] + "\033[0m"
-    print(*args, **kwargs)

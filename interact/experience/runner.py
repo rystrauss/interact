@@ -44,6 +44,7 @@ class Worker:
         self.env.reset()
 
         self.policy = policy_fn()
+        self.policy.build(self.env.observation_space.shape)
 
         self.eps_ids = [uuid.uuid4().int for _ in range(self.env.num_envs)]
 

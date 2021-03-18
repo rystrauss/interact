@@ -1,0 +1,7 @@
+train.agent = 'td3'
+train.env_id = 'Pendulum-v0'
+train.total_timesteps = 150000
+train.log_interval = 500
+
+td3.learning_starts = 5000
+td3.random_steps = 5000

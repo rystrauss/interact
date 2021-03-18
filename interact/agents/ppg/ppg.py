@@ -13,10 +13,9 @@ from interact.experience.episode_batch import EpisodeBatch
 from interact.experience.postprocessing import AdvantagePostprocessor
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
-from interact.networks import build_network_fn
 from interact.schedules import LinearDecay
 from interact.typing import TensorType
-from interact.utils.math_utils import explained_variance
+from interact.utils.math import explained_variance
 
 
 @gin.configurable(name_or_fn="ppg", denylist=["env_fn"])
@@ -99,15 +98,15 @@ class PPGAgent(Agent):
 
         env = self.make_env()
 
-        network_fn = build_network_fn(policy_network, env.observation_space.shape)
-
         def policy_fn():
-            return PPGPolicy(env.observation_space, env.action_space, network_fn)
+            return PPGPolicy(env.observation_space, env.action_space, policy_network)
 
         self.policy = policy_fn()
-        self.runner = Runner(
-            env_fn,
-            policy_fn,
+
+        self.runner = None
+        self.runner_config = dict(
+            env_fn=env_fn,
+            policy_fn=policy_fn,
             num_envs_per_worker=num_envs_per_worker,
             num_workers=num_workers,
         )
@@ -268,7 +267,7 @@ class PPGAgent(Agent):
         experience_buffer = []
 
         for _ in range(self.policy_iterations):
-            self.runner.update_policies(self.policy.get_actor_weights())
+            self.runner.update_policies(self.policy.get_weights())
             episodes, ep_infos = self.runner.run(self.nsteps)
             ep_info_buffer.extend(ep_infos)
 
@@ -419,3 +418,5 @@ class PPGAgent(Agent):
         if self.policy_epochs != self.value_epochs:
             self.value_optimizer = tf.optimizers.Adam(learning_rate=lr)
         self.aux_optimizer = tf.optimizers.Adam(learning_rate=lr)
+
+        self.runner = Runner(**self.runner_config)

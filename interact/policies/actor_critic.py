@@ -1,4 +1,4 @@
-from typing import Union, Dict, Callable
+from typing import Union, Dict
 
 import gin
 import gym
@@ -7,8 +7,10 @@ import tensorflow as tf
 from tensorflow_probability import distributions as tfd
 
 from interact.experience.sample_batch import SampleBatch
+from interact.networks import build_network_fn
 from interact.policies.base import Policy
-from interact.utils.math_utils import NormcInitializer
+from interact.policies.q_function import QFunction, TwinQFunction
+from interact.utils.initialization import NormcInitializer
 
 layers = tf.keras.layers
 
@@ -23,8 +25,7 @@ class ActorCriticPolicy(Policy):
     Args:
         observation_space: The observation space of this policy.
         action_space: The action space of this policy.
-        base_model_fn: A function which returns the model to be used as the base for
-            the policy and value functions.
+        network: The type of network to be built.
         value_network: Either 'shared' or 'copy', indicating whether or not the value
             function should share weights with the policy.
         free_log_std: Use free-floating (i.e. non-state-dependent) variables for the
@@ -35,20 +36,22 @@ class ActorCriticPolicy(Policy):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        base_model_fn: Callable[[], layers.Layer],
+        network: str,
         value_network: str = "copy",
         free_log_std: bool = True,
     ):
         super().__init__(observation_space, action_space)
 
+        network_fn = build_network_fn(network, observation_space.shape)
+
         if value_network == "copy":
-            self._policy_base = base_model_fn()
-            self._value_base = base_model_fn()
+            self._policy_base = network_fn()
+            self._value_base = network_fn()
             self._shared_base = None
         elif value_network == "shared":
             self._policy_base = None
             self._value_base = None
-            self._shared_base = base_model_fn()
+            self._shared_base = network_fn()
         else:
             raise ValueError('`value_network` must be either "copy" or "shared"')
 
@@ -75,6 +78,8 @@ class ActorCriticPolicy(Policy):
 
         self._value_fn = layers.Dense(1, kernel_initializer=NormcInitializer(0.01))
 
+        self.call(tf.zeros((1, *observation_space.shape)))
+
     def make_pdf(self, latent):
         if self.is_discrete:
             pi = tfd.Categorical(latent)
@@ -88,7 +93,7 @@ class ActorCriticPolicy(Policy):
             pi = tfd.MultivariateNormalDiag(mu, tf.exp(logstd))
         return pi
 
-    def call(self, inputs, **kwargs):
+    def call(self, inputs):
         if self._shared_base is None:
             policy_latent = self._policy_base(inputs)
             value_latent = self._value_base(inputs)
@@ -115,5 +120,83 @@ class ActorCriticPolicy(Policy):
         }
 
     @tf.function
-    def value(self, inputs, **kwargs):
-        return self(inputs, **kwargs)[1]
+    def value(self, inputs):
+        return self(inputs)[1]
+
+
+class DeterministicActorCriticPolicy(Policy):
+    """A generic implementation of a deterministic Actor-Critic policy.
+
+    This policy is generally used for algorithms in the DDPG family.
+
+    Args:
+        observation_space: The observation space of this policy.
+        action_space: The action space of this policy.
+        network: The type of network to be built.
+        use_twin_critic: If True, the policy's `q_function` will be an instance of the
+            `TwinQFunction` class.
+    """
+
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        network: str,
+        use_twin_critic: bool = False,
+    ):
+        super().__init__(observation_space, action_space)
+        assert isinstance(action_space, gym.spaces.Box), (
+            "DeterministicActorCriticPolicy can only be used with "
+            "continuous action spaces."
+        )
+
+        self.action_space_low = action_space.low[np.newaxis]
+        self.action_space_high = action_space.high[np.newaxis]
+
+        network_fn = build_network_fn(network, observation_space.shape)
+
+        def squash(x):
+            x = tf.nn.sigmoid(2 * x)
+            return (
+                self.action_space_high - self.action_space_low
+            ) * x + self.action_space_low
+
+        policy_layers = [
+            network_fn(),
+            layers.Dense(action_space.shape[0]),
+        ]
+
+        bounded = np.logical_and(
+            action_space.bounded_above, action_space.bounded_below
+        ).any()
+
+        if bounded:
+            policy_layers.append(layers.Lambda(squash))
+
+        self.policy = tf.keras.Sequential(policy_layers)
+
+        q_class = TwinQFunction if use_twin_critic else QFunction
+        self.q_function = q_class(observation_space, action_space, network)
+
+        self.policy.build([None, *observation_space.shape])
+
+    def call(self, inputs, **kwargs):
+        noise_scale = kwargs.get("noise_scale", 0.0)
+        actions = self.policy(inputs)
+        if noise_scale != 0.0:
+            actions += tf.random.normal(shape=actions.shape, stddev=noise_scale)
+            actions = tf.clip_by_value(
+                actions, self.action_space_low, self.action_space_high
+            )
+        return actions
+
+    @tf.function
+    def _step(self, obs: np.ndarray, **kwargs) -> Dict[str, Union[float, np.ndarray]]:
+        if kwargs.get("uniform_sample", False):
+            actions = tf.random.uniform(
+                [len(obs)], self.action_space_low, self.action_space_high
+            )
+        else:
+            actions = self.call(obs, **kwargs)
+
+        return {SampleBatch.ACTIONS: actions}

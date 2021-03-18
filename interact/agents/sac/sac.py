@@ -7,13 +7,15 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 from interact.agents.base import Agent
-from interact.agents.sac.policy import SACPolicy, TwinQNetwork
+from interact.agents.sac.policy import SACPolicy
 from interact.agents.utils import register
 from interact.experience.runner import Runner
 from interact.experience.sample_batch import SampleBatch
+from interact.policies.q_function import TwinQFunction
 from interact.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from interact.schedules import LinearDecay
 from interact.typing import TensorType
+from interact.utils.math import polyak_update
 
 
 @gin.configurable("sac", denylist=["env_fn"])
@@ -125,7 +127,6 @@ class SACAgent(Agent):
         self.beta_schedule = None
 
         self.policy = SACPolicy(env.observation_space, env.action_space, network)
-        self.policy.build([None, *env.observation_space.shape])
 
         def policy_fn():
             if num_workers == 1:
@@ -133,26 +134,12 @@ class SACAgent(Agent):
 
             return SACPolicy(env.observation_space, env.action_space, network)
 
-        self.q_network = TwinQNetwork(env.observation_space, env.action_space, network)
-        self.target_q_network = TwinQNetwork(
+        self.q_network = TwinQFunction(env.observation_space, env.action_space, network)
+        self.target_q_network = TwinQFunction(
             env.observation_space, env.action_space, network
         )
         self.target_q_network.trainable = False
 
-        if (
-            not isinstance(env.action_space, gym.spaces.Discrete)
-            and len(env.observation_space.shape) == 1
-        ):
-            q_input_shape = [
-                (None, *env.observation_space.shape),
-                (None, *env.action_space.shape),
-            ]
-
-        else:
-            q_input_shape = (None, *env.observation_space.shape)
-
-        self.q_network.build(q_input_shape)
-        self.target_q_network.build(q_input_shape)
         self.target_q_network.set_weights(self.q_network.get_weights())
 
         self.actor_optimizer = None
@@ -327,11 +314,9 @@ class SACAgent(Agent):
 
     @tf.function
     def _update_target(self):
-        """Perform Polyak averaging of the target network."""
-        for target_var, q_var in zip(
-            self.target_q_network.variables, self.q_network.variables
-        ):
-            target_var.assign(self.tau * q_var + (1 - self.tau) * target_var)
+        polyak_update(
+            self.q_network.variables, self.target_q_network.variables, self.tau
+        )
 
     def _update(self, update, sample, weights):
         metrics = dict()
@@ -358,9 +343,6 @@ class SACAgent(Agent):
 
         if self.prioritized_replay:
             self.replay_buffer.update_priorities(sample["batch_indices"], td_errors)
-
-        if update % self.target_update_interval == 0:
-            self._update_target()
 
         if self.num_workers != 1:
             self.runner.update_policies(self.policy.get_weights())
@@ -398,6 +380,9 @@ class SACAgent(Agent):
                 weights = 1.0
 
             metrics.update(self._update(update, sample, weights))
+
+        if update % self.target_update_interval == 0:
+            self._update_target()
 
         return metrics, ep_infos
 

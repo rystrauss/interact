@@ -1,4 +1,4 @@
-from typing import Callable, Union, Dict
+from typing import Union, Dict
 
 import gym
 import numpy as np
@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from interact.experience.sample_batch import SampleBatch
 from interact.policies.actor_critic import ActorCriticPolicy
-from interact.utils.math_utils import NormcInitializer
+from interact.utils.initialization import NormcInitializer
 
 layers = tf.keras.layers
 
@@ -16,11 +16,9 @@ class PPGPolicy(ActorCriticPolicy):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        base_model_fn: Callable[[], layers.Layer],
+        network: str,
     ):
-        super().__init__(
-            observation_space, action_space, base_model_fn, value_network="copy"
-        )
+        super().__init__(observation_space, action_space, network, value_network="copy")
 
         self._aux_value_fn = layers.Dense(
             1, kernel_initializer=NormcInitializer(0.01), name="aux_value"
@@ -39,14 +37,7 @@ class PPGPolicy(ActorCriticPolicy):
             self.policy_weights + self._aux_value_fn.trainable_weights
         )
 
-    def build(self, input_shape):
-        super(PPGPolicy, self).build(input_shape)
-        self.auxiliary_heads(tf.zeros([1, *input_shape[1:]]))
-
-    def get_actor_weights(self):
-        weights = self.get_weights()
-        weight_names = [w.name for w in self.weights]
-        return [w for w, n in zip(weights, weight_names) if "aux_value" not in n]
+        self.auxiliary_heads(tf.zeros([1, *observation_space.shape]))
 
     @tf.function
     def policy_logits(self, obs):
