@@ -3,3 +3,4 @@
 logs/
 *.DS_Store
 Pipfile*
+interact.egg-info/
