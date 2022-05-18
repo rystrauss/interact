@@ -17,7 +17,7 @@ setuptools.setup(
     python_requires=">=3.8",
     install_requires=[
         "numpy",
-        "tensorflow==2.4",
+        "tensorflow==2.4.1",
         "gym",
         "tensorflow-probability==0.11",
         "tqdm",
